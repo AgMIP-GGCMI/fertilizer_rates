@@ -91,6 +91,10 @@ ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV VISUAL=nano
 
+# Rewrite SSH GitHub URLs to HTTPS so `git clone` (used by Claude Codes plugin
+# marketplace installer) doesnt need SSH keys we havent mounted.
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:"
+
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
