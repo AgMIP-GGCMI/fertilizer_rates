@@ -65,60 +65,6 @@ test_that("relative: base-year slice equals base_rate at valid cells", {
   expect_equal(result[, , 2], fx$base_rate)
 })
 
-# ---- Lambda semantics -----------------------------------------------------
-
-test_that("lambda: output is clamped to non-negative values", {
-  fx <- make_harness_fixture()
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "lambda")
-  )
-  expect_true(all(result >= 0 | is.na(result)))
-})
-
-test_that("lambda: base-year slice at cells where ts_base == base_rate equals base_rate", {
-  base_rate <- matrix(c(10, 20, 30, 40), nrow = 2, ncol = 2)
-  ts <- array(NA_real_, dim = c(2, 2, 3))
-  ts[, , 1] <- matrix(c(5, 15, 25, 35), nrow = 2)
-  ts[, , 2] <- base_rate
-  ts[, , 3] <- matrix(c(12, 22, 32, 42), nrow = 2)
-  capture.output(
-    result <- scale_with_timeseries(base_rate, ts,
-                                    base_year = 1999,
-                                    start_year = 1998, end_year = 2000,
-                                    method = "lambda")
-  )
-  expect_equal(result[, , 2], base_rate)
-})
-
-test_that("lambda: when ts_base == base_rate, scaled[t] equals ts[t] at that cell", {
-  base_rate <- matrix(c(10, 20, 30, 40), nrow = 2, ncol = 2)
-  ts <- array(NA_real_, dim = c(2, 2, 3))
-  ts[, , 1] <- matrix(c(5, 15, 25, 35), nrow = 2)
-  ts[, , 2] <- base_rate
-  ts[, , 3] <- matrix(c(12, 22, 32, 42), nrow = 2)
-  capture.output(
-    result <- scale_with_timeseries(base_rate, ts,
-                                    base_year = 1999,
-                                    start_year = 1998, end_year = 2000,
-                                    method = "lambda")
-  )
-  expect_equal(result[, , 1], ts[, , 1])
-  expect_equal(result[, , 3], ts[, , 3])
-})
-
-test_that("lambda: NA base_rate yields NA in output", {
-  fx <- make_harness_fixture()
-  fx$base_rate[1, 1] <- NA
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "lambda")
-  )
-  expect_true(all(is.na(result[1, 1, ])))
-})
-
 # ---- Diagnostics ----------------------------------------------------------
 
 test_that("diagnostic warning fires when max scaled value exceeds 1000", {
@@ -248,4 +194,72 @@ test_that("scale_with_timeseries does not call compute_lambda for relative metho
                           method = "relative")
   )
   expect_equal(call_count, 0)
+})
+
+test_that("scale_with_timeseries calls scale_lambda_timestep once per t with correct args", {
+  fx <- make_harness_fixture()
+  calls <- list()
+  local_mock(
+    scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
+                                     valid_base, lambda) {
+      calls[[length(calls) + 1]] <<- list(
+        base_rate = base_rate, ts_t = ts_t,
+        base_timeseries = base_timeseries,
+        valid_base = valid_base, lambda = lambda
+      )
+      matrix(-999, nrow = dim(base_rate)[1], ncol = dim(base_rate)[2])
+    }
+  )
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "lambda")
+  )
+  ntime <- dim(fx$timeseries)[3]
+  expect_equal(length(calls), ntime)
+  for (t in seq_len(ntime)) {
+    expect_equal(calls[[t]]$base_rate, fx$base_rate)
+    expect_equal(calls[[t]]$ts_t, fx$timeseries[, , t])
+    expect_equal(calls[[t]]$base_timeseries, fx$timeseries[, , 2])
+  }
+  expected_lambda <- compute_lambda(
+    fx$base_rate, fx$timeseries[, , 2],
+    !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate > 0
+  )
+  expect_equal(calls[[1]]$lambda, expected_lambda)
+  expect_true(all(result == -999))
+})
+
+test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {
+  fx <- make_harness_fixture()
+  local_mock(
+    scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
+                                     valid_base, lambda) {
+      stop(structure(
+        class = c("lambda_timestep_error", "error", "condition"),
+        list(message = "boom",
+             original = simpleError("boom"),
+             i = 1, j = 1, nlon = 2, nlat = 2)
+      ))
+    }
+  )
+  # capture.output propagates errors and loses the captured text, so use
+  # sink() directly so we can inspect the diagnostic output even though the
+  # call errors out.
+  tmpfile <- tempfile()
+  sink(tmpfile)
+  err <- tryCatch(
+    scale_with_timeseries(fx$base_rate, fx$timeseries,
+                          fx$base_year, fx$start_year, fx$end_year,
+                          method = "lambda"),
+    error = function(e) e
+  )
+  sink()
+  out <- readLines(tmpfile)
+
+  expect_s3_class(err, "error")
+  expect_equal(err$message, "boom")
+  expect_true(any(grepl("ERROR in lambda loop at time step t=1", out)))
+  expect_true(any(grepl("scaled_data dims: 2 x 2 x 3", out)))
+  expect_true(any(grepl("Last indices: i=1 \\(max=2\\), j=1 \\(max=2\\)", out)))
 })
