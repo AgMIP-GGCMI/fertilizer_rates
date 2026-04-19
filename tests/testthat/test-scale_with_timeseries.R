@@ -65,82 +65,6 @@ test_that("relative: base-year slice equals base_rate at valid cells", {
   expect_equal(result[, , 2], fx$base_rate)
 })
 
-test_that("relative: scaled[t] == base_rate * ts[t] / ts[base] at sampled cells", {
-  fx <- make_harness_fixture()
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  # Hand-computed expectations.
-  expect_equal(result[1, 1, 1], 5)
-  expect_equal(result[1, 1, 3], 20)
-  expect_equal(result[2, 1, 1], 10)
-  expect_equal(result[1, 2, 3], 60)
-  expect_equal(result[2, 2, 3], 80)
-})
-
-test_that("relative: NA base_rate yields NA in output at every time step", {
-  fx <- make_harness_fixture()
-  fx$base_rate[1, 1] <- NA
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  expect_true(all(is.na(result[1, 1, ])))
-})
-
-test_that("relative: non-finite base_rate yields NA in output", {
-  fx <- make_harness_fixture()
-  fx$base_rate[1, 1] <- Inf
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  expect_true(all(is.na(result[1, 1, ])))
-})
-
-test_that("relative: zero or negative base_rate yields NA in output", {
-  fx <- make_harness_fixture()
-  fx$base_rate[1, 1] <- 0
-  fx$base_rate[2, 1] <- -5
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  expect_true(all(is.na(result[1, 1, ])))
-  expect_true(all(is.na(result[2, 1, ])))
-})
-
-test_that("relative: valid base_rate + invalid ts_base yields base_rate at every t", {
-  fx <- make_harness_fixture()
-  fx$timeseries[1, 1, 2] <- NA   # invalid ts_base at [1,1]
-  fx$timeseries[2, 1, 2] <- 0    # invalid ts_base at [2,1]
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  expect_equal(result[1, 1, ], rep(fx$base_rate[1, 1], 3))
-  expect_equal(result[2, 1, ], rep(fx$base_rate[2, 1], 3))
-})
-
-test_that("relative: NA ts[t] at valid-everything cell yields NA at that t", {
-  fx <- make_harness_fixture()
-  fx$timeseries[1, 1, 3] <- NA
-  capture.output(
-    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
-                                    fx$base_year, fx$start_year, fx$end_year,
-                                    method = "relative")
-  )
-  expect_true(is.na(result[1, 1, 3]))
-  expect_false(is.na(result[1, 1, 1]))
-  expect_false(is.na(result[1, 1, 2]))
-})
-
 # ---- Lambda semantics -----------------------------------------------------
 
 test_that("lambda: output is clamped to non-negative values", {
@@ -255,4 +179,31 @@ test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
   expect_equal(captured$base_year, fx$base_year)
   expect_equal(captured$start_year, fx$start_year)
   expect_equal(captured$end_year, fx$end_year)
+})
+
+test_that("scale_with_timeseries calls scale_relative_timestep once per t with correct args", {
+  fx <- make_harness_fixture()
+  calls <- list()
+  local_mock(
+    scale_relative_timestep = function(base_rate, ts_t, base_timeseries, valid_base) {
+      calls[[length(calls) + 1]] <<- list(
+        base_rate = base_rate, ts_t = ts_t,
+        base_timeseries = base_timeseries, valid_base = valid_base
+      )
+      matrix(-999, nrow = dim(base_rate)[1], ncol = dim(base_rate)[2])
+    }
+  )
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "relative")
+  )
+  ntime <- dim(fx$timeseries)[3]
+  expect_equal(length(calls), ntime)
+  for (t in seq_len(ntime)) {
+    expect_equal(calls[[t]]$base_rate, fx$base_rate)
+    expect_equal(calls[[t]]$ts_t, fx$timeseries[, , t])
+    expect_equal(calls[[t]]$base_timeseries, fx$timeseries[, , 2])
+  }
+  expect_true(all(result == -999))
 })
