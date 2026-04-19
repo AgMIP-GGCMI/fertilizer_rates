@@ -207,3 +207,45 @@ test_that("scale_with_timeseries calls scale_relative_timestep once per t with c
   }
   expect_true(all(result == -999))
 })
+
+test_that("scale_with_timeseries calls compute_lambda once for lambda method with correct args", {
+  fx <- make_harness_fixture()
+  called_with <- NULL
+  call_count <- 0
+  local_mock(
+    compute_lambda = function(base_rate, base_timeseries, valid_base) {
+      call_count <<- call_count + 1
+      called_with <<- list(base_rate = base_rate,
+                           base_timeseries = base_timeseries,
+                           valid_base = valid_base)
+      matrix(1, nrow = dim(base_rate)[1], ncol = dim(base_rate)[2])
+    }
+  )
+  capture.output(
+    scale_with_timeseries(fx$base_rate, fx$timeseries,
+                          fx$base_year, fx$start_year, fx$end_year,
+                          method = "lambda")
+  )
+  expect_equal(call_count, 1)
+  expect_equal(called_with$base_rate, fx$base_rate)
+  expect_equal(called_with$base_timeseries, fx$timeseries[, , 2])
+  expect_equal(called_with$valid_base,
+               !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate > 0)
+})
+
+test_that("scale_with_timeseries does not call compute_lambda for relative method", {
+  fx <- make_harness_fixture()
+  call_count <- 0
+  local_mock(
+    compute_lambda = function(...) {
+      call_count <<- call_count + 1
+      matrix(1, nrow = dim(fx$base_rate)[1], ncol = dim(fx$base_rate)[2])
+    }
+  )
+  capture.output(
+    scale_with_timeseries(fx$base_rate, fx$timeseries,
+                          fx$base_year, fx$start_year, fx$end_year,
+                          method = "relative")
+  )
+  expect_equal(call_count, 0)
+})
