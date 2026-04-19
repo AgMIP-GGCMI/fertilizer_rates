@@ -25,6 +25,8 @@
 #   Averages 6x6 blocks (36 cells) into single 0.5 degree cells
 #   NA values are ignored in averaging (unless all NA)
 # ============================================================================
+# TODO: lon_5min, lat_5min args are unused. Remove.
+# TODO: Is this possibly the source of the upside-down maps?
 aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # input: 4320 x 2160 (5 arcmin)
   # output: 720 x 360 (0.5 degree)
