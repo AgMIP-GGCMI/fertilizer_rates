@@ -6,7 +6,7 @@
 
 **Architecture:** `scale_with_timeseries` calls `prepare_scaling_inputs`, allocates output, dispatches per time step to `scale_relative_timestep` or `scale_lambda_timestep` (the latter after `compute_lambda` precomputes per-cell exponents), and ends with `diagnose_extreme_values`. The lambda diagnostic `tryCatch` is preserved via a custom R condition (`lambda_timestep_error`) so `t` and `scaled_data` dims can still be reported from the caller.
 
-**Tech Stack:** R, testthat (with `local_mocked_bindings` for wiring checks).
+**Tech Stack:** R, testthat. Wiring checks use a project-local `local_mock()` helper (defined in `tests/testthat/helper-mock.R`, committed during Task 2) that rebinds names in `globalenv()` with `withr::defer()` cleanup. This replaces `testthat::local_mocked_bindings`, which requires pkgload / package context and does not work in this script-based project.
 
 **Workflow per step:** Code-writing agent implements → code-reviewing agent (`superpowers:code-reviewer`) reviews diff against this plan and the spec at `docs/superpowers/specs/2026-04-19-scale-with-timeseries-modularization-design.md` → commit only after reviewer approves.
 
@@ -597,7 +597,7 @@ Add a wiring test at the bottom of the file:
 test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
   fx <- make_harness_fixture()
   captured <- list()
-  local_mocked_bindings(
+  local_mock(
     prepare_scaling_inputs = function(base_rate, timeseries, base_year,
                                       start_year, end_year) {
       captured <<- list(
@@ -633,7 +633,7 @@ Rscript tests/testthat.R
 
 - [ ] **Step 2c.3: Reviewer check**
 
-> Review Task 2c. Verify: (a) exactly the two validation tests were removed, no others; (b) the wiring test uses `local_mocked_bindings` and asserts each arg is forwarded verbatim; (c) the mock returns a structurally-valid `prep` so `scale_with_timeseries` can continue running.
+> Review Task 2c. Verify: (a) exactly the two validation tests were removed, no others; (b) the wiring test uses `local_mock` and asserts each arg is forwarded verbatim; (c) the mock returns a structurally-valid `prep` so `scale_with_timeseries` can continue running.
 
 - [ ] **Step 2c.4: Commit**
 
@@ -828,7 +828,7 @@ Add a wiring test:
 test_that("scale_with_timeseries calls scale_relative_timestep once per t with correct args", {
   fx <- make_harness_fixture()
   calls <- list()
-  local_mocked_bindings(
+  local_mock(
     scale_relative_timestep = function(base_rate, ts_t, base_timeseries, valid_base) {
       calls[[length(calls) + 1]] <<- list(
         base_rate = base_rate, ts_t = ts_t,
@@ -1044,7 +1044,7 @@ test_that("scale_with_timeseries calls compute_lambda once for lambda method wit
   fx <- make_harness_fixture()
   called_with <- NULL
   call_count <- 0
-  local_mocked_bindings(
+  local_mock(
     compute_lambda = function(base_rate, base_timeseries, valid_base) {
       call_count <<- call_count + 1
       called_with <<- list(base_rate = base_rate,
@@ -1068,7 +1068,7 @@ test_that("scale_with_timeseries calls compute_lambda once for lambda method wit
 test_that("scale_with_timeseries does not call compute_lambda for relative method", {
   fx <- make_harness_fixture()
   call_count <- 0
-  local_mocked_bindings(
+  local_mock(
     compute_lambda = function(...) {
       call_count <<- call_count + 1
       matrix(1, nrow = dim(fx$base_rate)[1], ncol = dim(fx$base_rate)[2])
@@ -1357,7 +1357,7 @@ Add a wiring test:
 test_that("scale_with_timeseries calls scale_lambda_timestep once per t with correct args", {
   fx <- make_harness_fixture()
   calls <- list()
-  local_mocked_bindings(
+  local_mock(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
                                      valid_base, lambda) {
       calls[[length(calls) + 1]] <<- list(
@@ -1391,7 +1391,7 @@ test_that("scale_with_timeseries calls scale_lambda_timestep once per t with cor
 
 test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {
   fx <- make_harness_fixture()
-  local_mocked_bindings(
+  local_mock(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
                                      valid_base, lambda) {
       stop(structure(
@@ -1675,7 +1675,7 @@ Add a wiring test:
 test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data and context", {
   fx <- make_harness_fixture()
   captured <- list()
-  local_mocked_bindings(
+  local_mock(
     diagnose_extreme_values = function(scaled_data, base_rate,
                                        base_timeseries, timeseries,
                                        start_year) {
