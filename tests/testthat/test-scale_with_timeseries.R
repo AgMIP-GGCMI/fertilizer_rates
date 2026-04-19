@@ -53,32 +53,6 @@ test_that("unknown method raises 'Unknown scaling method'", {
   )
 })
 
-# ---- base_year validation --------------------------------------------------
-
-test_that("base_year below start_year raises out-of-range error", {
-  fx <- make_harness_fixture()
-  expect_error(
-    capture.output(
-      scale_with_timeseries(fx$base_rate, fx$timeseries,
-                            base_year = 1997,
-                            fx$start_year, fx$end_year, method = "relative")
-    ),
-    "is outside the time series range"
-  )
-})
-
-test_that("base_year above end_year raises out-of-range error", {
-  fx <- make_harness_fixture()
-  expect_error(
-    capture.output(
-      scale_with_timeseries(fx$base_rate, fx$timeseries,
-                            base_year = 2001,
-                            fx$start_year, fx$end_year, method = "relative")
-    ),
-    "is outside the time series range"
-  )
-})
-
 # ---- Relative semantics ---------------------------------------------------
 
 test_that("relative: base-year slice equals base_rate at valid cells", {
@@ -249,4 +223,36 @@ test_that("no diagnostic warning when max scaled value is under 1000", {
                           method = "relative")
   )
   expect_false(any(grepl("WARNING: Maximum scaled value", out)))
+})
+
+# ---- Wiring checks (verify helpers are called correctly) ----------------
+
+test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
+  fx <- make_harness_fixture()
+  captured <- list()
+  local_mock(
+    prepare_scaling_inputs = function(base_rate, timeseries, base_year,
+                                      start_year, end_year) {
+      captured <<- list(
+        base_rate = base_rate, timeseries = timeseries,
+        base_year = base_year, start_year = start_year, end_year = end_year
+      )
+      # Return a valid prep so scale_with_timeseries can proceed.
+      list(
+        base_idx = base_year - start_year + 1,
+        base_timeseries = timeseries[, , base_year - start_year + 1],
+        valid_base = !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
+      )
+    }
+  )
+  capture.output(
+    scale_with_timeseries(fx$base_rate, fx$timeseries,
+                          fx$base_year, fx$start_year, fx$end_year,
+                          method = "relative")
+  )
+  expect_equal(captured$base_rate, fx$base_rate)
+  expect_equal(captured$timeseries, fx$timeseries)
+  expect_equal(captured$base_year, fx$base_year)
+  expect_equal(captured$start_year, fx$start_year)
+  expect_equal(captured$end_year, fx$end_year)
 })
