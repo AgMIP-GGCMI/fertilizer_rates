@@ -97,11 +97,11 @@ make_harness_fixture <- function() {
 
 test_that("relative method returns an array with shape [nlon, nlat, ntimes]", {
   fx <- make_harness_fixture()
-  out <- suppressMessages(capture.output(
+  capture.output(
     result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
                                     fx$base_year, fx$start_year, fx$end_year,
                                     method = "relative")
-  ))
+  )
   expect_equal(dim(result), c(2, 2, 3))
 })
 
