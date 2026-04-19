@@ -249,17 +249,11 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   Scaled data [lon, lat, time]
 #
 # Method options:
-#   "relative": scaled[t] = base_rate * (timeseries[t] / timeseries[base_year])
-#   "lambda": Precipitation-style scaling with anomalies and lambda correction
-#              scaled[t] = base_rate * [1 + (TS_anom[t] / TS_mean) * (base_mean / TS_mean)^lambda]
-#              where lambda = sqrt(TS_mean / base_mean) if TS_mean < base_mean, else 1
+#   "relative": scale each cell by timeseries[t] / timeseries[base_year]
+#   "lambda": precipitation-style scaling with anomalies and lambda correction
 # ============================================================================
 scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
                                    start_year, end_year, method = "relative") {
-  # base_rate: spatial pattern at 0.5 degree [lon, lat]
-  # timeseries: temporal data [lon, lat, time]
-  # returns: scaled data [lon, lat, time]
-  
   print(paste("Using scaling method:", method))
   
   # get dimensions
@@ -270,7 +264,6 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   # validate + precompute common pieces
   prep <- prepare_scaling_inputs(base_rate, timeseries, base_year,
                                  start_year, end_year)
-  base_idx        <- prep$base_idx
   base_timeseries <- prep$base_timeseries
   valid_base      <- prep$valid_base
 
@@ -285,16 +278,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     }
 
   } else if (method == "lambda") {
-    # ===== LAMBDA METHOD (Precipitation-style) =====
-    # Adapted for fertilizer: scaled[t] = F_ref * [1 + (fert_diff / F_ref_base) * (F_ref_base / F_ts_base)^lambda]
-    # where:
-    #   F_ref = base_rate (spatial baseline at year 2000)
-    #   F_ref_base = base_rate (same, at base year 2000)
-    #   F_ts_base = timeseries at base year 2000
-    #   fert_diff = timeseries[t] - timeseries[base_year] (fertilizer difference relative to base year)
-    #   lambda = sqrt(F_ts_base / F_ref_base) if F_ts_base < F_ref_base, else 1
-    #   (lower lambda when TS is lower than spatial baseline to dampen amplification)
-    
+    # Lambda method: see compute_lambda and scale_lambda_timestep.
     lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
 
     for (t in 1:ntimes) {

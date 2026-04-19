@@ -1,8 +1,9 @@
 # Tests for scale_with_timeseries() in fertilizer_scaling_functions.R.
 #
-# These tests run against the current implementation to lock down behavior
-# before the modularization refactor. Fixtures are small (2x2x3) so every
-# expected value can be hand-computed.
+# These tests lock down the end-to-end behavior of scale_with_timeseries()
+# across the modularization refactor, and now also verify the wiring to
+# extracted helpers. Fixtures are small (2x2x3) so every expected value can
+# be hand-computed.
 
 make_harness_fixture <- function() {
   base_rate <- matrix(c(10, 20, 30, 40), nrow = 2, ncol = 2)
