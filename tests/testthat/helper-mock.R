@@ -9,22 +9,24 @@
 # search path). Callers who try to mock names not bound there get a clear
 # error instead of silently shadowing a package function.
 #
+# Named to avoid collision with testthat::local_mock (defunct in testthat 3.2+).
+#
 # Usage (inside a test_that block):
-#   local_mock(some_fn = function(...) { ...mock body... })
+#   local_mocked_globals(some_fn = function(...) { ...mock body... })
 #
 # Multiple names can be rebound in one call. On test exit, all originals
 # are restored regardless of whether the test passed or errored.
 
-local_mock <- function(..., .envir = parent.frame()) {
+local_mocked_globals <- function(..., .envir = parent.frame()) {
   bindings <- list(...)
   names_to_mock <- names(bindings)
   if (is.null(names_to_mock) || any(names_to_mock == "")) {
-    stop("local_mock() requires named arguments (binding = function).")
+    stop("local_mocked_globals() requires named arguments (binding = function).")
   }
   originals <- lapply(names_to_mock, function(nm) {
     if (!exists(nm, envir = globalenv(), inherits = FALSE)) {
       stop(sprintf(
-        "local_mock(): '%s' is not bound in globalenv(); refusing to mock.", nm))
+        "local_mocked_globals(): '%s' is not bound in globalenv(); refusing to mock.", nm))
     }
     get(nm, envir = globalenv(), inherits = FALSE)
   })

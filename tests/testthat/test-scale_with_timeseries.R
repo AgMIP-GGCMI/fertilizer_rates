@@ -73,7 +73,7 @@ test_that("relative: base-year slice equals base_rate at valid cells", {
 test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
   fx <- make_harness_fixture()
   captured <- list()
-  local_mock(
+  local_mocked_globals(
     prepare_scaling_inputs = function(base_rate, timeseries, base_year,
                                       start_year, end_year) {
       captured <<- list(
@@ -103,7 +103,7 @@ test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
 test_that("scale_with_timeseries calls scale_relative_timestep once per t with correct args", {
   fx <- make_harness_fixture()
   calls <- list()
-  local_mock(
+  local_mocked_globals(
     scale_relative_timestep = function(base_rate, ts_t, base_timeseries, valid_base) {
       calls[[length(calls) + 1]] <<- list(
         base_rate = base_rate, ts_t = ts_t,
@@ -131,7 +131,7 @@ test_that("scale_with_timeseries calls compute_lambda once for lambda method wit
   fx <- make_harness_fixture()
   called_with <- NULL
   call_count <- 0
-  local_mock(
+  local_mocked_globals(
     compute_lambda = function(base_rate, base_timeseries, valid_base) {
       call_count <<- call_count + 1
       called_with <<- list(base_rate = base_rate,
@@ -155,7 +155,7 @@ test_that("scale_with_timeseries calls compute_lambda once for lambda method wit
 test_that("scale_with_timeseries does not call compute_lambda for relative method", {
   fx <- make_harness_fixture()
   call_count <- 0
-  local_mock(
+  local_mocked_globals(
     compute_lambda = function(...) {
       call_count <<- call_count + 1
       matrix(1, nrow = dim(fx$base_rate)[1], ncol = dim(fx$base_rate)[2])
@@ -172,7 +172,7 @@ test_that("scale_with_timeseries does not call compute_lambda for relative metho
 test_that("scale_with_timeseries calls scale_lambda_timestep once per t with correct args", {
   fx <- make_harness_fixture()
   calls <- list()
-  local_mock(
+  local_mocked_globals(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
                                      valid_base, lambda) {
       calls[[length(calls) + 1]] <<- list(
@@ -205,7 +205,7 @@ test_that("scale_with_timeseries calls scale_lambda_timestep once per t with cor
 
 test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {
   fx <- make_harness_fixture()
-  local_mock(
+  local_mocked_globals(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
                                      valid_base, lambda) {
       stop(structure(
@@ -242,7 +242,7 @@ test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims"
 test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data and context", {
   fx <- make_harness_fixture()
   captured <- list()
-  local_mock(
+  local_mocked_globals(
     diagnose_extreme_values = function(scaled_data, base_rate,
                                        base_timeseries, timeseries,
                                        start_year) {
