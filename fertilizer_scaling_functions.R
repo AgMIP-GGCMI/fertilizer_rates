@@ -152,8 +152,8 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
                                   valid_base, lambda) {
   nlon <- dim(base_rate)[1]
   nlat <- dim(base_rate)[2]
-  result <- array(NA_real_, dim = c(nlon, nlat))
   tryCatch({
+    result <- array(NA_real_, dim = c(nlon, nlat))
     for (i in 1:nlon) {
       for (j in 1:nlat) {
         if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
@@ -167,6 +167,7 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
         }
       }
     }
+    result
   }, error = function(e) {
     stop(structure(
       class = c("lambda_timestep_error", "error", "condition"),
@@ -181,7 +182,6 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
       )
     ))
   })
-  result
 }
 
 
