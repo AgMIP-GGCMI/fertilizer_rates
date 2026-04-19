@@ -77,7 +77,10 @@ and run green against the current implementation:
   - Base-year slice matches `base_rate` at cells valid in both.
   - For sampled valid cells, `scaled[i,j,t] == base_rate[i,j] * ts[i,j,t] / ts[i,j,base_idx]`.
   - Cells where `base_rate` is NA / non-finite / ≤ 0 remain NA in output.
-  - Cells where `base_timeseries` is NA / non-finite / ≤ 0 remain NA in output.
+  - Cells where `base_rate` is valid but `base_timeseries` is NA /
+    non-finite / ≤ 0: current code defaults `rel_change` to 1 at those
+    cells, so output equals `base_rate` at every time step. Locking
+    this in as current behavior.
 - **Lambda semantics**:
   - For cells where `ts_base < base_rate`, lambda equals `sqrt(ts_base / base_rate)`.
   - For cells where `ts_base >= base_rate`, lambda equals 1.
