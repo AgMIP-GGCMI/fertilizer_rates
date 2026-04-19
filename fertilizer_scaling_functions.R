@@ -69,6 +69,32 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
 
 
 # ============================================================================
+# FUNCTION: prepare_scaling_inputs
+# ============================================================================
+# Common setup for scale_with_timeseries: validate base_year, extract the base
+# year time slice, and compute the valid_base mask.
+#
+# Returns: list(base_idx, base_timeseries, valid_base).
+# ============================================================================
+prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
+                                   start_year, end_year) {
+  ntimes <- dim(timeseries)[3]
+  base_idx <- base_year - start_year + 1
+  if (base_idx < 1 || base_idx > ntimes) {
+    stop(paste("Base year", base_year, "is outside the time series range",
+               start_year, "-", end_year))
+  }
+  base_timeseries <- timeseries[, , base_idx]
+  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
+  list(
+    base_idx        = base_idx,
+    base_timeseries = base_timeseries,
+    valid_base      = valid_base
+  )
+}
+
+
+# ============================================================================
 # FUNCTION: scale_with_timeseries
 # ============================================================================
 # Scale fertilizer rates using relative change from time series
@@ -99,27 +125,19 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   print(paste("Using scaling method:", method))
   
   # get dimensions
-  # ncvar_get returns [lon, lat, time] for this data
   nlon <- dim(timeseries)[1]
   nlat <- dim(timeseries)[2]
   ntimes <- dim(timeseries)[3]
-  
-  # find index of base year
-  base_idx <- base_year - start_year + 1
-  
-  if (base_idx < 1 || base_idx > ntimes) {
-    stop(paste("Base year", base_year, "is outside the time series range",
-               start_year, "-", end_year))
-  }
-  
-  # extract base year time slice [lon, lat, time] -> [lon, lat]
-  base_timeseries <- timeseries[, , base_idx]
-  
+
+  # validate + precompute common pieces
+  prep <- prepare_scaling_inputs(base_rate, timeseries, base_year,
+                                 start_year, end_year)
+  base_idx        <- prep$base_idx
+  base_timeseries <- prep$base_timeseries
+  valid_base      <- prep$valid_base
+
   # create output array [lon, lat, time]
   scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
-  
-  # Common: Only calculate for cells where base_rate is valid (not NA) and finite
-  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
   
   if (method == "relative") {
     # ===== RELATIVE CHANGE METHOD =====
@@ -154,9 +172,6 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     #   fert_diff = timeseries[t] - timeseries[base_year] (fertilizer difference relative to base year)
     #   lambda = sqrt(F_ts_base / F_ref_base) if F_ts_base < F_ref_base, else 1
     #   (lower lambda when TS is lower than spatial baseline to dampen amplification)
-    
-    # Get base year timeseries slice
-    base_timeseries <- timeseries[, , base_idx]
     
     # Calculate lambda for each cell based on base year comparison
     lambda <- array(1, dim = c(nlon, nlat))
