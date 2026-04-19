@@ -110,6 +110,33 @@ scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base
   result
 }
 
+# ============================================================================
+# FUNCTION: compute_lambda
+# ============================================================================
+# Compute the per-cell lambda exponent used by the lambda scaling method.
+# lambda = sqrt(base_timeseries / base_rate) when base_timeseries < base_rate
+# (at cells where both are valid and positive). Otherwise lambda = 1.
+# ============================================================================
+compute_lambda <- function(base_rate, base_timeseries, valid_base) {
+  nlon <- dim(base_rate)[1]
+  nlat <- dim(base_rate)[2]
+  lambda <- array(1, dim = c(nlon, nlat))
+  for (i in 1:nlon) {
+    for (j in 1:nlat) {
+      if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
+        ts_base_val <- base_timeseries[i, j]
+        spatial_val <- base_rate[i, j]
+        if (ts_base_val < spatial_val) {
+          lambda[i, j] <- sqrt(ts_base_val / spatial_val)
+        } else {
+          lambda[i, j] <- 1
+        }
+      }
+    }
+  }
+  lambda
+}
+
 
 # ============================================================================
 # FUNCTION: scale_with_timeseries
@@ -174,26 +201,8 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     #   lambda = sqrt(F_ts_base / F_ref_base) if F_ts_base < F_ref_base, else 1
     #   (lower lambda when TS is lower than spatial baseline to dampen amplification)
     
-    # Calculate lambda for each cell based on base year comparison
-    lambda <- array(1, dim = c(nlon, nlat))
-    for (i in 1:nlon) {
-      for (j in 1:nlat) {
-        if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-          # Compare timeseries base year to spatial base rate
-          ts_base_val <- base_timeseries[i, j]
-          spatial_val <- base_rate[i, j]
-          
-          if (ts_base_val < spatial_val) {
-            # When timeseries is lower than spatial baseline, apply damping factor
-            lambda[i, j] <- sqrt(ts_base_val / spatial_val)
-          } else {
-            # When timeseries is higher or equal, no damping
-            lambda[i, j] <- 1
-          }
-        }
-      }
-    }
-    
+    lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
+
     # Apply lambda scaling for each time step
     for (t in 1:ntimes) {
       ts_t <- timeseries[, , t]
