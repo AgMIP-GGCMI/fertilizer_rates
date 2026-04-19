@@ -137,6 +137,53 @@ compute_lambda <- function(base_rate, base_timeseries, valid_base) {
   lambda
 }
 
+# ============================================================================
+# FUNCTION: scale_lambda_timestep
+# ============================================================================
+# Compute one [lon, lat] scaled slice using the lambda scaling method.
+#   scaled = base * [1 + (ts_t - ts_base) / base * (base / ts_base) ^ lambda]
+# Clamped to >= 0. Invalid cells remain NA.
+#
+# On an internal error, this function re-throws a 'lambda_timestep_error'
+# condition carrying i, j, nlon, nlat so the caller can enrich the
+# diagnostic with time-step-level context (t, scaled_data dims).
+# ============================================================================
+scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
+                                  valid_base, lambda) {
+  nlon <- dim(base_rate)[1]
+  nlat <- dim(base_rate)[2]
+  result <- array(NA_real_, dim = c(nlon, nlat))
+  tryCatch({
+    for (i in 1:nlon) {
+      for (j in 1:nlat) {
+        if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
+          fert_diff <- ts_t[i, j] - base_timeseries[i, j]
+          ratio_base <- base_rate[i, j] / base_timeseries[i, j]
+          ratio_term <- ratio_base ^ lambda[i, j]
+          result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
+          if (!is.na(result[i, j]) && result[i, j] < 0) {
+            result[i, j] <- 0
+          }
+        }
+      }
+    }
+  }, error = function(e) {
+    stop(structure(
+      class = c("lambda_timestep_error", "error", "condition"),
+      list(
+        message  = e$message,
+        call     = e$call,
+        original = e,
+        i        = i,
+        j        = j,
+        nlon     = nlon,
+        nlat     = nlat
+      )
+    ))
+  })
+  result
+}
+
 
 # ============================================================================
 # FUNCTION: scale_with_timeseries
@@ -203,37 +250,19 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     
     lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
 
-    # Apply lambda scaling for each time step
     for (t in 1:ntimes) {
-      ts_t <- timeseries[, , t]
-      scaled_data[, , t] <- NA_real_
-      
       tryCatch({
-        for (i in 1:nlon) {
-          for (j in 1:nlat) {
-            if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-              # Calculate fertilizer difference relative to base year
-              fert_diff <- ts_t[i, j] - base_timeseries[i, j]
-              
-              # Apply scaling formula
-              # scaled = base * [1 + (fert_diff / base_spatial) * (base_spatial / base_ts)^lambda]
-              ratio_base <- base_rate[i, j] / base_timeseries[i, j]
-              ratio_term <- ratio_base ^ lambda[i, j]
-              scaled_data[i, j, t] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
-              
-              # Ensure non-negative
-              if (!is.na(scaled_data[i, j, t]) && scaled_data[i, j, t] < 0) {
-                scaled_data[i, j, t] <- 0
-              }
-            }
-          }
-        }
-      }, error = function(e) {
+        scaled_data[, , t] <- scale_lambda_timestep(
+          base_rate, timeseries[, , t], base_timeseries, valid_base, lambda
+        )
+      }, lambda_timestep_error = function(e) {
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
         cat(sprintf("  Message: %s\n", e$message))
-        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n", i, nlon, j, nlat))
-        cat(sprintf("  scaled_data dims: %d x %d x %d\n", dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
-        stop(e)
+        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n",
+                    e$i, e$nlon, e$j, e$nlat))
+        cat(sprintf("  scaled_data dims: %d x %d x %d\n",
+                    dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
+        stop(e$original)
       })
     }
     
