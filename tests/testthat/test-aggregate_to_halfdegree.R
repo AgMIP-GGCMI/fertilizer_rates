@@ -65,7 +65,7 @@ test_that("NA values are ignored when a block is only partially NA", {
   block[1:3, ] <- non_na_values
   input[1:6, 1:6] <- block
   result <- aggregate_to_halfdegree(input, NULL, NULL)
-  expect_equal(result$data[1, 1], mean(rep(non_na_values, each = 3)))
+  expect_equal(result$data[1, 1], mean(non_na_values))
 })
 
 test_that("neighboring output cells aggregate from independent input blocks", {
