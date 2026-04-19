@@ -93,6 +93,23 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
   )
 }
 
+# ============================================================================
+# FUNCTION: scale_relative_timestep
+# ============================================================================
+# Compute one [lon, lat] scaled slice using the relative-change method:
+#   scaled = base_rate * (ts_t / base_timeseries)
+# Cells where base_rate is invalid remain NA; cells where base_rate is valid
+# but base_timeseries is invalid get base_rate (rel_change defaults to 1).
+# ============================================================================
+scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base) {
+  result <- array(NA_real_, dim = dim(base_rate))
+  valid_ts_base <- valid_base & !is.na(base_timeseries) & is.finite(base_timeseries) & base_timeseries > 0
+  rel_change <- array(1, dim = dim(base_rate))
+  rel_change[valid_ts_base] <- ts_t[valid_ts_base] / base_timeseries[valid_ts_base]
+  result[valid_base] <- base_rate[valid_base] * rel_change[valid_base]
+  result
+}
+
 
 # ============================================================================
 # FUNCTION: scale_with_timeseries
@@ -140,28 +157,12 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
   
   if (method == "relative") {
-    # ===== RELATIVE CHANGE METHOD =====
-    # scaled[t] = base_rate * (timeseries[t] / timeseries[base_year])
-    
-    # vectorized scaling over time steps
     for (t in 1:ntimes) {
-      # extract time slice [lon, lat]
-      ts_t <- timeseries[, , t]
-      
-      # Initialize this time slice with NA
-      scaled_data[, , t] <- NA_real_
-      
-      # Identify cells with valid timeseries data at base year
-      valid_ts_base <- valid_base & !is.na(base_timeseries) & is.finite(base_timeseries) & base_timeseries > 0
-      
-      # Calculate relative change only for cells with valid base and valid timeseries
-      rel_change <- array(1, dim = dim(base_rate))
-      rel_change[valid_ts_base] <- ts_t[valid_ts_base] / base_timeseries[valid_ts_base]
-      
-      # Apply scaling only where base_rate is valid
-      scaled_data[, , t][valid_base] <- base_rate[valid_base] * rel_change[valid_base]
+      scaled_data[, , t] <- scale_relative_timestep(
+        base_rate, timeseries[, , t], base_timeseries, valid_base
+      )
     }
-    
+
   } else if (method == "lambda") {
     # ===== LAMBDA METHOD (Precipitation-style) =====
     # Adapted for fertilizer: scaled[t] = F_ref * [1 + (fert_diff / F_ref_base) * (F_ref_base / F_ts_base)^lambda]
