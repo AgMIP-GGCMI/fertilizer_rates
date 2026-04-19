@@ -67,34 +67,6 @@ test_that("relative: base-year slice equals base_rate at valid cells", {
 
 # ---- Diagnostics ----------------------------------------------------------
 
-test_that("diagnostic warning fires when max scaled value exceeds 1000", {
-  base_rate <- matrix(c(500, 10, 10, 10), nrow = 2, ncol = 2)
-  ts <- array(NA_real_, dim = c(2, 2, 3))
-  ts[, , 1] <- matrix(c(1, 1, 1, 1), nrow = 2)
-  ts[, , 2] <- matrix(c(1, 1, 1, 1), nrow = 2)  # base year
-  ts[, , 3] <- matrix(c(10, 1, 1, 1), nrow = 2) # scaled[1,1,3] = 500 * 10 = 5000
-  out <- capture.output(
-    result <- scale_with_timeseries(base_rate, ts,
-                                    base_year = 1999,
-                                    start_year = 1998, end_year = 2000,
-                                    method = "relative")
-  )
-  expect_true(any(grepl("WARNING: Maximum scaled value", out)))
-  expect_true(any(grepl("Found .* cells with values >", out)))
-  expect_equal(dim(result), c(2, 2, 3))
-  expect_equal(result[1, 1, 3], 5000)
-})
-
-test_that("no diagnostic warning when max scaled value is under 1000", {
-  fx <- make_harness_fixture()
-  out <- capture.output(
-    scale_with_timeseries(fx$base_rate, fx$timeseries,
-                          fx$base_year, fx$start_year, fx$end_year,
-                          method = "relative")
-  )
-  expect_false(any(grepl("WARNING: Maximum scaled value", out)))
-})
-
 # ---- Wiring checks (verify helpers are called correctly) ----------------
 
 test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
@@ -264,4 +236,34 @@ test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims"
   expect_true(any(grepl("Message: boom", out)))
   expect_true(any(grepl("scaled_data dims: 2 x 2 x 3", out)))
   expect_true(any(grepl("Last indices: i=1 \\(max=2\\), j=1 \\(max=2\\)", out)))
+})
+
+test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data and context", {
+  fx <- make_harness_fixture()
+  captured <- list()
+  local_mock(
+    diagnose_extreme_values = function(scaled_data, base_rate,
+                                       base_timeseries, timeseries,
+                                       start_year) {
+      captured <<- list(
+        scaled_data = scaled_data, base_rate = base_rate,
+        base_timeseries = base_timeseries, timeseries = timeseries,
+        start_year = start_year
+      )
+      invisible(NULL)
+    }
+  )
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "relative")
+  )
+  expect_equal(dim(captured$scaled_data), dim(fx$timeseries))
+  expect_equal(captured$base_rate, fx$base_rate)
+  expect_equal(captured$base_timeseries, fx$timeseries[, , 2])
+  expect_equal(captured$timeseries, fx$timeseries)
+  expect_equal(captured$start_year, fx$start_year)
+  # The diagnostic is called AFTER scaling is complete, so captured$scaled_data
+  # should be the final result.
+  expect_equal(captured$scaled_data, result)
 })
