@@ -248,6 +248,7 @@ test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims"
   # call errors out.
   tmpfile <- tempfile()
   sink(tmpfile)
+  withr::defer(if (sink.number() > 0) sink())
   err <- tryCatch(
     scale_with_timeseries(fx$base_rate, fx$timeseries,
                           fx$base_year, fx$start_year, fx$end_year,
@@ -260,6 +261,7 @@ test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims"
   expect_s3_class(err, "error")
   expect_equal(err$message, "boom")
   expect_true(any(grepl("ERROR in lambda loop at time step t=1", out)))
+  expect_true(any(grepl("Message: boom", out)))
   expect_true(any(grepl("scaled_data dims: 2 x 2 x 3", out)))
   expect_true(any(grepl("Last indices: i=1 \\(max=2\\), j=1 \\(max=2\\)", out)))
 })
