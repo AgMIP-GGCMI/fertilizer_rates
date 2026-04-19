@@ -69,6 +69,170 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
 
 
 # ============================================================================
+# FUNCTION: prepare_scaling_inputs
+# ============================================================================
+# Common setup for scale_with_timeseries: validate base_year, extract the base
+# year time slice, and compute the valid_base mask.
+#
+# Returns: list(base_idx, base_timeseries, valid_base).
+# ============================================================================
+prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
+                                   start_year, end_year) {
+  ntimes <- dim(timeseries)[3]
+  base_idx <- base_year - start_year + 1
+  if (base_idx < 1 || base_idx > ntimes) {
+    stop(paste("Base year", base_year, "is outside the time series range",
+               start_year, "-", end_year))
+  }
+  base_timeseries <- timeseries[, , base_idx]
+  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
+  list(
+    base_idx        = base_idx,
+    base_timeseries = base_timeseries,
+    valid_base      = valid_base
+  )
+}
+
+# ============================================================================
+# FUNCTION: scale_relative_timestep
+# ============================================================================
+# Compute one [lon, lat] scaled slice using the relative-change method:
+#   scaled = base_rate * (ts_t / base_timeseries)
+# Cells where base_rate is invalid remain NA; cells where base_rate is valid
+# but base_timeseries is invalid get base_rate (rel_change defaults to 1).
+# ============================================================================
+scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base) {
+  result <- array(NA_real_, dim = dim(base_rate))
+  valid_ts_base <- valid_base & !is.na(base_timeseries) & is.finite(base_timeseries) & base_timeseries > 0
+  rel_change <- array(1, dim = dim(base_rate))
+  rel_change[valid_ts_base] <- ts_t[valid_ts_base] / base_timeseries[valid_ts_base]
+  result[valid_base] <- base_rate[valid_base] * rel_change[valid_base]
+  result
+}
+
+# ============================================================================
+# FUNCTION: compute_lambda
+# ============================================================================
+# Compute the per-cell lambda exponent used by the lambda scaling method.
+# lambda = sqrt(base_timeseries / base_rate) when base_timeseries < base_rate
+# (at cells where both are valid and positive). Otherwise lambda = 1.
+# ============================================================================
+compute_lambda <- function(base_rate, base_timeseries, valid_base) {
+  nlon <- dim(base_rate)[1]
+  nlat <- dim(base_rate)[2]
+  lambda <- array(1, dim = c(nlon, nlat))
+  for (i in 1:nlon) {
+    for (j in 1:nlat) {
+      if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
+        ts_base_val <- base_timeseries[i, j]
+        spatial_val <- base_rate[i, j]
+        if (ts_base_val < spatial_val) {
+          lambda[i, j] <- sqrt(ts_base_val / spatial_val)
+        } else {
+          lambda[i, j] <- 1
+        }
+      }
+    }
+  }
+  lambda
+}
+
+# ============================================================================
+# FUNCTION: scale_lambda_timestep
+# ============================================================================
+# Compute one [lon, lat] scaled slice using the lambda scaling method.
+#   scaled = base * [1 + (ts_t - ts_base) / base * (base / ts_base) ^ lambda]
+# Clamped to >= 0. Invalid cells remain NA.
+#
+# On an internal error, this function re-throws a 'lambda_timestep_error'
+# condition carrying i, j, nlon, nlat so the caller can enrich the
+# diagnostic with time-step-level context (t, scaled_data dims).
+# ============================================================================
+scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
+                                  valid_base, lambda) {
+  nlon <- dim(base_rate)[1]
+  nlat <- dim(base_rate)[2]
+  tryCatch({
+    result <- array(NA_real_, dim = c(nlon, nlat))
+    for (i in 1:nlon) {
+      for (j in 1:nlat) {
+        if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
+          fert_diff <- ts_t[i, j] - base_timeseries[i, j]
+          ratio_base <- base_rate[i, j] / base_timeseries[i, j]
+          ratio_term <- ratio_base ^ lambda[i, j]
+          result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
+          if (!is.na(result[i, j]) && result[i, j] < 0) {
+            result[i, j] <- 0
+          }
+        }
+      }
+    }
+    result
+  }, error = function(e) {
+    stop(structure(
+      class = c("lambda_timestep_error", "error", "condition"),
+      list(
+        message  = e$message,
+        call     = e$call,
+        original = e,
+        i        = i,
+        j        = j,
+        nlon     = nlon,
+        nlat     = nlat
+      )
+    ))
+  })
+}
+
+# ============================================================================
+# FUNCTION: diagnose_extreme_values
+# ============================================================================
+# Print a warning and details for cells whose scaled value exceeds
+# 1000 kg/ha. Never alters scaled_data. Returns invisibly.
+# ============================================================================
+diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
+                                    timeseries, start_year) {
+  max_val <- max(scaled_data, na.rm = TRUE)
+  if (max_val > 1000) {
+    print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
+    extreme_threshold <- 1000
+    extreme_cells <- which(
+      apply(scaled_data, c(1, 2), function(x) any(x > extreme_threshold, na.rm = TRUE)),
+      arr.ind = TRUE
+    )
+    if (nrow(extreme_cells) > 0) {
+      print(paste("Found", nrow(extreme_cells), "cells with values >",
+                  extreme_threshold, "kg/ha"))
+      n_report <- min(5, nrow(extreme_cells))
+      for (i in 1:n_report) {
+        idx_lon <- extreme_cells[i, 1]
+        idx_lat <- extreme_cells[i, 2]
+        ts_cell <- scaled_data[idx_lon, idx_lat, ]
+        max_year_idx <- which.max(ts_cell)
+        max_year <- start_year + max_year_idx - 1
+        print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
+        print(paste("  Base rate (year 2000 spatial):",
+                    round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
+        print(paste("  TS at base year (2000):",
+                    round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
+        print(paste("  TS at year", max_year, ":",
+                    round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
+        print(paste("  Relative change:",
+                    round(timeseries[idx_lon, idx_lat, max_year_idx] / base_timeseries[idx_lon, idx_lat], 2)))
+        print(paste("  Scaled value at year", max_year, ":",
+                    round(ts_cell[max_year_idx], 2), "kg/ha"))
+        ratio_base_to_ts <- base_rate[idx_lon, idx_lat] / base_timeseries[idx_lon, idx_lat]
+        if (abs(ratio_base_to_ts - 1) > 0.5) {
+          print(paste("  MISMATCH: Spatial base / TS base ratio =",
+                      round(ratio_base_to_ts, 2)))
+        }
+      }
+    }
+  }
+  invisible(NULL)
+}
+
+# ============================================================================
 # FUNCTION: scale_with_timeseries
 # ============================================================================
 # Scale fertilizer rates using relative change from time series
@@ -85,130 +249,51 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
 #   Scaled data [lon, lat, time]
 #
 # Method options:
-#   "relative": scaled[t] = base_rate * (timeseries[t] / timeseries[base_year])
-#   "lambda": Precipitation-style scaling with anomalies and lambda correction
-#              scaled[t] = base_rate * [1 + (TS_anom[t] / TS_mean) * (base_mean / TS_mean)^lambda]
-#              where lambda = sqrt(TS_mean / base_mean) if TS_mean < base_mean, else 1
+#   "relative": scale each cell by timeseries[t] / timeseries[base_year]
+#   "lambda": precipitation-style scaling with anomalies and lambda correction
 # ============================================================================
 scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
                                    start_year, end_year, method = "relative") {
-  # base_rate: spatial pattern at 0.5 degree [lon, lat]
-  # timeseries: temporal data [lon, lat, time]
-  # returns: scaled data [lon, lat, time]
-  
   print(paste("Using scaling method:", method))
   
   # get dimensions
-  # ncvar_get returns [lon, lat, time] for this data
   nlon <- dim(timeseries)[1]
   nlat <- dim(timeseries)[2]
   ntimes <- dim(timeseries)[3]
-  
-  # find index of base year
-  base_idx <- base_year - start_year + 1
-  
-  if (base_idx < 1 || base_idx > ntimes) {
-    stop(paste("Base year", base_year, "is outside the time series range",
-               start_year, "-", end_year))
-  }
-  
-  # extract base year time slice [lon, lat, time] -> [lon, lat]
-  base_timeseries <- timeseries[, , base_idx]
-  
+
+  # validate + precompute common pieces
+  prep <- prepare_scaling_inputs(base_rate, timeseries, base_year,
+                                 start_year, end_year)
+  base_timeseries <- prep$base_timeseries
+  valid_base      <- prep$valid_base
+
   # create output array [lon, lat, time]
   scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
   
-  # Common: Only calculate for cells where base_rate is valid (not NA) and finite
-  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
-  
   if (method == "relative") {
-    # ===== RELATIVE CHANGE METHOD =====
-    # scaled[t] = base_rate * (timeseries[t] / timeseries[base_year])
-    
-    # vectorized scaling over time steps
     for (t in 1:ntimes) {
-      # extract time slice [lon, lat]
-      ts_t <- timeseries[, , t]
-      
-      # Initialize this time slice with NA
-      scaled_data[, , t] <- NA_real_
-      
-      # Identify cells with valid timeseries data at base year
-      valid_ts_base <- valid_base & !is.na(base_timeseries) & is.finite(base_timeseries) & base_timeseries > 0
-      
-      # Calculate relative change only for cells with valid base and valid timeseries
-      rel_change <- array(1, dim = dim(base_rate))
-      rel_change[valid_ts_base] <- ts_t[valid_ts_base] / base_timeseries[valid_ts_base]
-      
-      # Apply scaling only where base_rate is valid
-      scaled_data[, , t][valid_base] <- base_rate[valid_base] * rel_change[valid_base]
+      scaled_data[, , t] <- scale_relative_timestep(
+        base_rate, timeseries[, , t], base_timeseries, valid_base
+      )
     }
-    
+
   } else if (method == "lambda") {
-    # ===== LAMBDA METHOD (Precipitation-style) =====
-    # Adapted for fertilizer: scaled[t] = F_ref * [1 + (fert_diff / F_ref_base) * (F_ref_base / F_ts_base)^lambda]
-    # where:
-    #   F_ref = base_rate (spatial baseline at year 2000)
-    #   F_ref_base = base_rate (same, at base year 2000)
-    #   F_ts_base = timeseries at base year 2000
-    #   fert_diff = timeseries[t] - timeseries[base_year] (fertilizer difference relative to base year)
-    #   lambda = sqrt(F_ts_base / F_ref_base) if F_ts_base < F_ref_base, else 1
-    #   (lower lambda when TS is lower than spatial baseline to dampen amplification)
-    
-    # Get base year timeseries slice
-    base_timeseries <- timeseries[, , base_idx]
-    
-    # Calculate lambda for each cell based on base year comparison
-    lambda <- array(1, dim = c(nlon, nlat))
-    for (i in 1:nlon) {
-      for (j in 1:nlat) {
-        if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-          # Compare timeseries base year to spatial base rate
-          ts_base_val <- base_timeseries[i, j]
-          spatial_val <- base_rate[i, j]
-          
-          if (ts_base_val < spatial_val) {
-            # When timeseries is lower than spatial baseline, apply damping factor
-            lambda[i, j] <- sqrt(ts_base_val / spatial_val)
-          } else {
-            # When timeseries is higher or equal, no damping
-            lambda[i, j] <- 1
-          }
-        }
-      }
-    }
-    
-    # Apply lambda scaling for each time step
+    # Lambda method: see compute_lambda and scale_lambda_timestep.
+    lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
+
     for (t in 1:ntimes) {
-      ts_t <- timeseries[, , t]
-      scaled_data[, , t] <- NA_real_
-      
       tryCatch({
-        for (i in 1:nlon) {
-          for (j in 1:nlat) {
-            if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-              # Calculate fertilizer difference relative to base year
-              fert_diff <- ts_t[i, j] - base_timeseries[i, j]
-              
-              # Apply scaling formula
-              # scaled = base * [1 + (fert_diff / base_spatial) * (base_spatial / base_ts)^lambda]
-              ratio_base <- base_rate[i, j] / base_timeseries[i, j]
-              ratio_term <- ratio_base ^ lambda[i, j]
-              scaled_data[i, j, t] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
-              
-              # Ensure non-negative
-              if (!is.na(scaled_data[i, j, t]) && scaled_data[i, j, t] < 0) {
-                scaled_data[i, j, t] <- 0
-              }
-            }
-          }
-        }
-      }, error = function(e) {
+        scaled_data[, , t] <- scale_lambda_timestep(
+          base_rate, timeseries[, , t], base_timeseries, valid_base, lambda
+        )
+      }, lambda_timestep_error = function(e) {
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
         cat(sprintf("  Message: %s\n", e$message))
-        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n", i, nlon, j, nlat))
-        cat(sprintf("  scaled_data dims: %d x %d x %d\n", dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
-        stop(e)
+        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n",
+                    e$i, e$nlon, e$j, e$nlat))
+        cat(sprintf("  scaled_data dims: %d x %d x %d\n",
+                    dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
+        stop(e$original)
       })
     }
     
@@ -216,44 +301,9 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     stop(paste("Unknown scaling method:", method))
   }
   
-  # Check for extreme values and diagnose issues
-  max_val <- max(scaled_data, na.rm = TRUE)
-  if (max_val > 1000) {
-    print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
-    
-    # Find cells with extreme values
-    extreme_threshold <- 1000
-    extreme_cells <- which(apply(scaled_data, c(1, 2), function(x) any(x > extreme_threshold, na.rm = TRUE)), arr.ind = TRUE)
-    
-    if (nrow(extreme_cells) > 0) {
-      print(paste("Found", nrow(extreme_cells), "cells with values >", extreme_threshold, "kg/ha"))
-      
-      # Report details for first few extreme cases
-      n_report <- min(5, nrow(extreme_cells))
-      for (i in 1:n_report) {
-        idx_lon <- extreme_cells[i, 1]
-        idx_lat <- extreme_cells[i, 2]
-        
-        ts_cell <- scaled_data[idx_lon, idx_lat, ]
-        max_year_idx <- which.max(ts_cell)
-        max_year <- start_year + max_year_idx - 1
-        
-        print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
-        print(paste("  Base rate (year 2000 spatial):", round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at base year (2000):", round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at year", max_year, ":", round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
-        print(paste("  Relative change:", round(timeseries[idx_lon, idx_lat, max_year_idx] / base_timeseries[idx_lon, idx_lat], 2)))
-        print(paste("  Scaled value at year", max_year, ":", round(ts_cell[max_year_idx], 2), "kg/ha"))
-        
-        # Check for mismatches
-        ratio_base_to_ts <- base_rate[idx_lon, idx_lat] / base_timeseries[idx_lon, idx_lat]
-        if (abs(ratio_base_to_ts - 1) > 0.5) {
-          print(paste("  MISMATCH: Spatial base / TS base ratio =", round(ratio_base_to_ts, 2)))
-        }
-      }
-    }
-  }
-  
+  diagnose_extreme_values(scaled_data, base_rate, base_timeseries,
+                          timeseries, start_year)
+
   return(scaled_data)
 }
 
