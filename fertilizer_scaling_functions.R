@@ -185,6 +185,54 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
 }
 
 # ============================================================================
+# FUNCTION: diagnose_extreme_values
+# ============================================================================
+# Print a warning and details for cells whose scaled value exceeds
+# 1000 kg/ha. Never alters scaled_data. Returns invisibly.
+# ============================================================================
+diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
+                                    timeseries, start_year) {
+  max_val <- max(scaled_data, na.rm = TRUE)
+  if (max_val > 1000) {
+    print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
+    extreme_threshold <- 1000
+    extreme_cells <- which(
+      apply(scaled_data, c(1, 2), function(x) any(x > extreme_threshold, na.rm = TRUE)),
+      arr.ind = TRUE
+    )
+    if (nrow(extreme_cells) > 0) {
+      print(paste("Found", nrow(extreme_cells), "cells with values >",
+                  extreme_threshold, "kg/ha"))
+      n_report <- min(5, nrow(extreme_cells))
+      for (i in 1:n_report) {
+        idx_lon <- extreme_cells[i, 1]
+        idx_lat <- extreme_cells[i, 2]
+        ts_cell <- scaled_data[idx_lon, idx_lat, ]
+        max_year_idx <- which.max(ts_cell)
+        max_year <- start_year + max_year_idx - 1
+        print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
+        print(paste("  Base rate (year 2000 spatial):",
+                    round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
+        print(paste("  TS at base year (2000):",
+                    round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
+        print(paste("  TS at year", max_year, ":",
+                    round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
+        print(paste("  Relative change:",
+                    round(timeseries[idx_lon, idx_lat, max_year_idx] / base_timeseries[idx_lon, idx_lat], 2)))
+        print(paste("  Scaled value at year", max_year, ":",
+                    round(ts_cell[max_year_idx], 2), "kg/ha"))
+        ratio_base_to_ts <- base_rate[idx_lon, idx_lat] / base_timeseries[idx_lon, idx_lat]
+        if (abs(ratio_base_to_ts - 1) > 0.5) {
+          print(paste("  MISMATCH: Spatial base / TS base ratio =",
+                      round(ratio_base_to_ts, 2)))
+        }
+      }
+    }
+  }
+  invisible(NULL)
+}
+
+# ============================================================================
 # FUNCTION: scale_with_timeseries
 # ============================================================================
 # Scale fertilizer rates using relative change from time series
@@ -269,44 +317,9 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     stop(paste("Unknown scaling method:", method))
   }
   
-  # Check for extreme values and diagnose issues
-  max_val <- max(scaled_data, na.rm = TRUE)
-  if (max_val > 1000) {
-    print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
-    
-    # Find cells with extreme values
-    extreme_threshold <- 1000
-    extreme_cells <- which(apply(scaled_data, c(1, 2), function(x) any(x > extreme_threshold, na.rm = TRUE)), arr.ind = TRUE)
-    
-    if (nrow(extreme_cells) > 0) {
-      print(paste("Found", nrow(extreme_cells), "cells with values >", extreme_threshold, "kg/ha"))
-      
-      # Report details for first few extreme cases
-      n_report <- min(5, nrow(extreme_cells))
-      for (i in 1:n_report) {
-        idx_lon <- extreme_cells[i, 1]
-        idx_lat <- extreme_cells[i, 2]
-        
-        ts_cell <- scaled_data[idx_lon, idx_lat, ]
-        max_year_idx <- which.max(ts_cell)
-        max_year <- start_year + max_year_idx - 1
-        
-        print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
-        print(paste("  Base rate (year 2000 spatial):", round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at base year (2000):", round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at year", max_year, ":", round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
-        print(paste("  Relative change:", round(timeseries[idx_lon, idx_lat, max_year_idx] / base_timeseries[idx_lon, idx_lat], 2)))
-        print(paste("  Scaled value at year", max_year, ":", round(ts_cell[max_year_idx], 2), "kg/ha"))
-        
-        # Check for mismatches
-        ratio_base_to_ts <- base_rate[idx_lon, idx_lat] / base_timeseries[idx_lon, idx_lat]
-        if (abs(ratio_base_to_ts - 1) > 0.5) {
-          print(paste("  MISMATCH: Spatial base / TS base ratio =", round(ratio_base_to_ts, 2)))
-        }
-      }
-    }
-  }
-  
+  diagnose_extreme_values(scaled_data, base_rate, base_timeseries,
+                          timeseries, start_year)
+
   return(scaled_data)
 }
 
