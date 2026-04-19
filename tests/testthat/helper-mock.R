@@ -5,6 +5,10 @@
 # tests/testthat/setup.R, so its functions live in globalenv(). This helper
 # temporarily rebinds names there and restores them on test exit.
 #
+# Only rebinds names already present in globalenv() itself (no walking up the
+# search path). Callers who try to mock names not bound there get a clear
+# error instead of silently shadowing a package function.
+#
 # Usage (inside a test_that block):
 #   local_mock(some_fn = function(...) { ...mock body... })
 #
@@ -17,7 +21,13 @@ local_mock <- function(..., .envir = parent.frame()) {
   if (is.null(names_to_mock) || any(names_to_mock == "")) {
     stop("local_mock() requires named arguments (binding = function).")
   }
-  originals <- lapply(names_to_mock, function(nm) get(nm, envir = globalenv()))
+  originals <- lapply(names_to_mock, function(nm) {
+    if (!exists(nm, envir = globalenv(), inherits = FALSE)) {
+      stop(sprintf(
+        "local_mock(): '%s' is not bound in globalenv(); refusing to mock.", nm))
+    }
+    get(nm, envir = globalenv(), inherits = FALSE)
+  })
   names(originals) <- names_to_mock
   for (nm in names_to_mock) {
     assign(nm, bindings[[nm]], envir = globalenv())
