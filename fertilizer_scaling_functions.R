@@ -456,10 +456,10 @@ check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
 #   method: Scaling method ("relative" or "lambda")
 #
 # Tests:
-#   1. Trends are preserved (correlation between scaled and original trends)
-#   2. Base year values match original pattern (only for "relative" method)
-#   3. No negative values introduced
-#   4. Relative changes are correctly applied
+#   1. Base year values match original pattern (relative method only)
+#   2. No negative values introduced
+#   3. Trends are preserved from the time series
+#   4. Relative changes are correctly applied (relative method only)
 # ============================================================================
 test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_year, method = "relative") {
 
@@ -481,11 +481,11 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
       cat(sprintf("Note: Lambda method doesn't preserve exact base year values\n"))
     }
   }
-  
+
   test_that("No negative values introduced by scaling", {
     expect_true(check_no_negatives(scaled_data))
   })
-  
+
   trends <- check_trends_preserved(scaled_data, timeseries)
   test_that("Trends are preserved from time series", {
     if (trends$n_sampled > 0) {
@@ -497,7 +497,7 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
       }
     }
   })
-  
+
   # Test relative changes only for relative method
   if (method == "relative") {
     rel <- check_relative_changes_applied(scaled_data, timeseries, base_rate, base_idx)
