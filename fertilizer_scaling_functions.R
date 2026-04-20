@@ -332,6 +332,16 @@ check_base_year_match <- function(scaled_data, base_rate, base_idx) {
 }
 
 # ============================================================================
+# FUNCTION: check_no_negatives
+# ============================================================================
+# TRUE when all non-NA values in scaled_data are non-negative. NA cells are
+# ignored. Returns a single logical.
+# ============================================================================
+check_no_negatives <- function(scaled_data) {
+  all(scaled_data >= 0 | is.na(scaled_data))
+}
+
+# ============================================================================
 # FUNCTION: test_scaling
 # ============================================================================
 # Test that scaling preserves trends and produces valid results
@@ -372,8 +382,7 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
   }
   
   test_that("No negative values introduced by scaling", {
-    # Negative fertilizer rates are physically impossible
-    expect_true(all(scaled_data >= 0 | is.na(scaled_data)))
+    expect_true(check_no_negatives(scaled_data))
   })
   
   test_that("Trends are preserved from time series", {
