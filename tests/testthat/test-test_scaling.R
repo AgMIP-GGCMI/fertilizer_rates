@@ -165,11 +165,13 @@ test_that("no-negatives fails when scaled_data contains a negative value", {
 
 test_that("relative: at least one inner test fails when scaled_data is uniformly random", {
   fx <- make_test_scaling_fixture()
-  set.seed(42)
-  fx$scaled_data <- array(
+  fx$scaled_data <- withr::with_seed(42, array(
     runif(length(fx$scaled_data), min = 0.1, max = 100),
     dim = dim(fx$scaled_data)
-  )
+  ))
+  # runif(min=0.1) guarantees no-negatives passes, so the failure must come
+  # from base-year-match (random ≠ base_rate pattern) and/or trends-preserved
+  # (random breaks per-cell trends). At least one of the two fires.
   r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
                                 fx$start_year, fx$base_year, method = "relative")
   expect_gte(r$n_failures, 1)
@@ -177,11 +179,10 @@ test_that("relative: at least one inner test fails when scaled_data is uniformly
 
 test_that("lambda: trend correlation line prints on non-degenerate data", {
   fx <- make_test_scaling_fixture()
-  set.seed(42)
-  fx$scaled_data <- array(
+  fx$scaled_data <- withr::with_seed(42, array(
     runif(length(fx$scaled_data), min = 0.1, max = 100),
     dim = dim(fx$scaled_data)
-  )
+  ))
   r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
                                 fx$start_year, fx$base_year, method = "lambda")
   # Random data gives non-zero sd per cell, so trend_cors is populated and the
@@ -220,7 +221,7 @@ test_that("relative-changes warns when no suitable cell is found", {
 # Short-ntime fixture (exercises trends-preserved "no sampled cells" branch)
 # -----------------------------------------------------------------------------
 
-test_that("trends-preserved: on ntime<=10 fixture, no cells sampled, block still passes", {
+test_that("trends-preserved: ntime<=10 records zero expectations (no failures)", {
   # ntime=8: > base_idx (6) so the fixture is valid, but <= 10 so no cell has
   # > 10 valid time points → trends sampler finds nothing.
   # test_that block still runs clean: trend_cors stays empty, no expect_* fires.
