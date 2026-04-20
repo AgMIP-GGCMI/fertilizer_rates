@@ -18,10 +18,15 @@ if (!requireNamespace("covr", quietly = TRUE)) {
   stop("covr is not installed. Install with `renv::install(\"covr\")`.")
 }
 
+src_file <- "fertilizer_scaling_functions.R"
+if (!file.exists(src_file)) {
+  stop(sprintf(
+    "Run tests/coverage.R from the repo root (missing: %s in %s)",
+    src_file, getwd()))
+}
+
 args <- commandArgs(trailingOnly = TRUE)
 threshold <- if (length(args) >= 1) as.numeric(args[[1]]) else NA_real_
-
-src_file <- "fertilizer_scaling_functions.R"
 helpers  <- list.files("tests/testthat", pattern = "^helper-.*\\.R$", full.names = TRUE)
 tests    <- list.files("tests/testthat", pattern = "^test-.*\\.R$",    full.names = TRUE)
 
