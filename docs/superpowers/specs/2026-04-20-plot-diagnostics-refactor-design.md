@@ -119,38 +119,64 @@ code paths for the aggregation-comparison block:
 
 Both produce PDFs under `data/outputs/`.
 
+### Rendering approach: shadow `pdf` with `png`
+
+This devcontainer has no PDF rasterizer available (no `pdftoppm`,
+`gs`, ImageMagick, Python `pdf2image`, or R `pdftools` — the last
+needs `libpoppler-cpp-dev` at the OS level, which can't be installed
+without sudo). Rather than trying to work around that, the
+verification harness bypasses PDF entirely and renders each plot
+directly to PNG via R's built-in cairo-backed `png()` device.
+
+The harness is a small R wrapper script that:
+
+1. Defines a top-level `pdf` function that shadows `grDevices::pdf`.
+   The shadow forwards to `grDevices::png` with
+   `type = "cairo"`, an `%03d`-numbered filename (R's multi-page PNG
+   pattern), and width/height converted from PDF inches to pixels at a
+   fixed DPI.
+2. Sources `fertilizer_scaling_functions.R` and invokes `main()` for
+   each reference scenario.
+3. Writes all PNG pages into a designated output directory.
+
+Because the refactor is strict — same draw calls, same order — the
+resulting PNGs must be byte-identical before and after. This is
+actually a stronger check than pixel comparison of rasterized PDFs,
+since no rasterizer sits between the draw calls and the pixels to
+potentially mask differences.
+
 ### Baseline capture
 
 Before any refactor work:
 
-1. On `main`, run both reference invocations and collect the resulting
-   PDFs.
-2. Rasterize each PDF page to PNG at 150 DPI via
-   `pdftoppm -r 150 <pdf> <prefix>`.
-3. Stash the PNGs under `data/plot-refactor-baseline/` — `data/` is
+1. On `main`, run both reference invocations through the PNG harness.
+2. Stash the PNGs under `data/plot-refactor-baseline/` — `data/` is
    already in `.gitignore`, so this directory is transparent to git.
+3. Record a manifest: `find data/plot-refactor-baseline -name '*.png' -print0 | sort -z | xargs -0 md5sum > data/plot-refactor-baseline/manifest.md5`.
 
 ### Per-step check
 
 After each extraction commit:
 
-1. Re-run both reference invocations.
-2. Rasterize the fresh PDFs the same way into a sibling directory,
-   e.g. `data/plot-refactor-current/`.
-3. For each page, run `compare -metric AE <baseline.png> <current.png> null:`
-   (ImageMagick). `AE = 0` means pixel-identical.
-4. Any non-zero AE fails the step. The reviewer does not approve the
-   commit until the check passes. If the check fails, the writer
-   either fixes the extraction or reverts it before proceeding.
+1. Re-run both reference invocations through the same PNG harness into
+   a sibling directory, e.g. `data/plot-refactor-current/`.
+2. Generate the same manifest: `find data/plot-refactor-current -name '*.png' -print0 | sort -z | xargs -0 md5sum`.
+3. `diff` the two manifests. Any difference fails the step. The
+   reviewer does not approve the commit until the manifests match
+   exactly. If the check fails, the writer either fixes the extraction
+   or reverts it before proceeding.
 
-### Tooling prerequisites
+### Step 0 sanity check (precondition)
 
-At the start of implementation, confirm `pdftoppm` (poppler-utils) and
-`compare` (ImageMagick) are available. If not, install them or
-substitute an equivalent (e.g., a Python
-`pdf2image` + `Pillow.ImageChops.difference` script); whichever tool is
-used, record the exact commands in the execution log so results are
-reproducible.
+Before doing any extraction, prove the PNG harness is deterministic:
+run it twice against unchanged `main` code and confirm the two
+manifests are identical. If that check fails, the rest of the
+verification plan is unreliable. The fallback in that case is a
+`trace()`-based approach that logs the arguments of every graphics
+function call (`plot`, `lines`, `hist`, `image.plot`, `legend`,
+`text`, `abline`, `par`, `points`, `axis`, etc.) to a file, then diffs
+those logs before and after. That replaces PNG hashing with call-log
+hashing — same idea at a different level of the graphics stack.
 
 ### Risks and determinism notes
 
@@ -183,7 +209,7 @@ commit cycle**:
 
 - A **code-writing subagent** implements the step.
 - A **code-reviewing subagent** reviews the diff against this spec,
-  confirms the PNG-diff check passes (AE = 0 for every page), and
+  confirms the PNG manifest matches the baseline exactly, and
   checks project conventions.
 - Commit **only** after the reviewer approves. If the reviewer flags
   issues, the writer addresses them and the reviewer re-reviews. No
@@ -193,17 +219,26 @@ Chunk sizing: each extraction is a reasonably-sized chunk — one helper
 or one plot-section function per extraction commit. Do not batch
 multiple extractions into one commit.
 
-### Step 1: Worktree and baseline
+### Step 1: Worktree, harness, baseline
 
 1. Create a git worktree for the refactor branch.
-2. Confirm `pdftoppm` and `compare` are available; install or
-   substitute if not.
-3. Run both reference invocations on the unchanged `main` code; stash
-   baseline PNGs under `data/plot-refactor-baseline/`.
-4. Document the exact `pdftoppm` and `compare` commands used.
-
-This step produces no code commits — it sets up the verification
-harness.
+2. Write the PNG harness script (call it
+   `tools/render_diagnostics_png.R` or similar — place it wherever
+   fits the project's convention). The script:
+   - Accepts the same positional args as `fertilizer_scaling.R` plus
+     an output directory.
+   - Defines the `pdf`-shadow function described above.
+   - Sources `fertilizer_scaling_functions.R` and calls `main()`.
+3. Run the Step 0 sanity check: invoke the harness twice against
+   unchanged code, `diff` the two manifests, confirm they match. If
+   they don't, stop and switch to the `trace()`-based fallback before
+   proceeding.
+4. Generate the baseline: run both reference invocations on unchanged
+   code, store PNGs under `data/plot-refactor-baseline/`, record the
+   baseline manifest.
+5. Commit the harness script (it's new code and lives in-tree); the
+   baseline PNGs do not go into git (they're under the ignored
+   `data/`).
 
 ### Step 2: Create the new file and wire the first helper
 
