@@ -8,17 +8,17 @@
 #
 # Target env for rebinding: start at parent.env(environment()) — the helper's
 # own lexical enclosing env — and walk up the parent chain until we find an
-# env that actually owns the first name the caller wants to mock. This makes
-# the helper work under both test flows:
+# env that actually owns the name the caller wants to mock. The walk is done
+# PER NAME, so a single call may rebind different names in different envs.
+# This makes the helper work under both test flows:
 #   * testthat::test_dir() sources helpers into a child of globalenv(), while
 #     setup.R's source() call puts production functions into globalenv()
 #     itself. The walk therefore advances one step to globalenv().
 #   * covr::file_coverage() sources helpers and the instrumented production
 #     functions into the same child env. The walk stops immediately.
 #
-# Only rebinds names already present in that env (no walking up the search
-# path). Callers who try to mock names not bound there get a clear error
-# instead of silently shadowing a package function.
+# Names not bound anywhere on the walk produce a clear error instead of
+# silently shadowing a package function on the search path.
 #
 # Named to avoid collision with testthat::local_mock (defunct in testthat 3.2+).
 #
@@ -34,41 +34,30 @@ local_mocked_globals <- function(..., .envir = parent.frame()) {
   if (is.null(names_to_mock) || any(names_to_mock == "")) {
     stop("local_mocked_globals() requires named arguments (binding = function).")
   }
-  # parent.env(environment()) is the lexical enclosing env of this function —
-  # whichever env sourced this helper file. Under covr::file_coverage() that
-  # env also contains the instrumented production functions, so it is exactly
-  # the right target. Under testthat::test_dir() the helper is sourced into a
-  # child of globalenv(), while setup.R's source() call (without local=TRUE)
-  # puts the production functions directly into globalenv(). Walk up the parent
-  # chain to find the first env that actually owns the first name we need to
-  # mock; this resolves to the instrumented covr env under file_coverage and to
-  # globalenv() under test_dir, making the helper work identically under both.
-  target_env <- (function() {
-    e <- parent.env(environment())
-    first_nm <- names_to_mock[[1L]]
+
+  start_env <- parent.env(environment())
+  find_env <- function(nm) {
+    e <- start_env
     while (!identical(e, emptyenv())) {
-      if (exists(first_nm, envir = e, inherits = FALSE)) return(e)
+      if (exists(nm, envir = e, inherits = FALSE)) return(e)
       e <- parent.env(e)
     }
     stop(sprintf(
-      "local_mocked_globals(): '%s' not found in any env on the search path.",
-      first_nm))
-  })()
-  originals <- lapply(names_to_mock, function(nm) {
-    if (!exists(nm, envir = target_env, inherits = FALSE)) {
-      stop(sprintf(
-        "local_mocked_globals(): '%s' is not bound in helper env; refusing to mock.", nm))
-    }
-    get(nm, envir = target_env, inherits = FALSE)
-  })
-  names(originals) <- names_to_mock
-  for (nm in names_to_mock) {
-    assign(nm, bindings[[nm]], envir = target_env)
+      "local_mocked_globals(): '%s' not bound in helper's enclosing env or any parent.",
+      nm))
   }
+
+  targets <- lapply(names_to_mock, find_env)
+  originals <- Map(function(nm, env) get(nm, envir = env, inherits = FALSE),
+                   names_to_mock, targets)
+
+  Map(function(nm, env) assign(nm, bindings[[nm]], envir = env),
+      names_to_mock, targets)
+
   withr::defer({
-    for (nm in names_to_mock) {
-      assign(nm, originals[[nm]], envir = target_env)
-    }
+    Map(function(nm, env, orig) assign(nm, orig, envir = env),
+        names_to_mock, targets, originals)
   }, envir = .envir)
+
   invisible(NULL)
 }
