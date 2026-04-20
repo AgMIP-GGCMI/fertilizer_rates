@@ -347,6 +347,51 @@ check_no_negatives <- function(scaled_data) {
 }
 
 # ============================================================================
+# FUNCTION: check_trends_preserved
+# ============================================================================
+# Sample up to n_samples cells (attempting up to max_attempts times) and
+# compute the correlation between the original and scaled time series at
+# each sampled cell. Returns list(n_sampled, median_correlation) where
+# median_correlation is NA when no valid samples were collected.
+#
+# Preserves the current non-deterministic sample() behavior.
+# ============================================================================
+check_trends_preserved <- function(scaled_data, timeseries,
+                                   n_samples = 100, max_attempts = 1000) {
+  nlon <- dim(scaled_data)[1]
+  nlat <- dim(scaled_data)[2]
+
+  sampled <- 0
+  trend_cors <- numeric()
+
+  for (attempt in 1:max_attempts) {
+    i <- sample(1:nlon, 1)
+    j <- sample(1:nlat, 1)
+
+    ts_orig <- timeseries[i, j, ]
+    ts_scaled <- scaled_data[i, j, ]
+
+    if (sum(!is.na(ts_orig)) > 10 && sum(!is.na(ts_scaled)) > 10) {
+      valid <- !is.na(ts_orig) & !is.na(ts_scaled)
+      if (sum(valid) > 10 && sd(ts_orig[valid]) > 0 && sd(ts_scaled[valid]) > 0) {
+        cor_val <- cor(ts_orig[valid], ts_scaled[valid])
+        trend_cors <- c(trend_cors, cor_val)
+        sampled <- sampled + 1
+      }
+    }
+
+    if (sampled >= n_samples) break
+  }
+
+  median_correlation <- if (length(trend_cors) > 0) {
+    median(trend_cors, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  list(n_sampled = sampled, median_correlation = median_correlation)
+}
+
+# ============================================================================
 # FUNCTION: test_scaling
 # ============================================================================
 # Test that scaling preserves trends and produces valid results
@@ -390,46 +435,14 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
     expect_true(check_no_negatives(scaled_data))
   })
   
+  trends <- check_trends_preserved(scaled_data, timeseries)
   test_that("Trends are preserved from time series", {
-    # Sample some grid cells and check if trends match
-    nlon <- dim(scaled_data)[1]
-    nlat <- dim(scaled_data)[2]
-    ntime <- dim(scaled_data)[3]
-    
-    # Sample 100 random cells with data
-    sampled <- 0
-    trend_cors <- numeric()
-    
-    for (attempt in 1:1000) {
-      i <- sample(1:nlon, 1)
-      j <- sample(1:nlat, 1)
-      
-      # Check if both have valid time series
-      # timeseries is [lon, lat, time]
-      ts_orig <- timeseries[i, j, ]
-      ts_scaled <- scaled_data[i, j, ]
-      
-      if (sum(!is.na(ts_orig)) > 10 && sum(!is.na(ts_scaled)) > 10) {
-        # Calculate correlation of trends
-        valid <- !is.na(ts_orig) & !is.na(ts_scaled)
-        if (sum(valid) > 10 && sd(ts_orig[valid]) > 0 && sd(ts_scaled[valid]) > 0) {
-          cor_val <- cor(ts_orig[valid], ts_scaled[valid])
-          trend_cors <- c(trend_cors, cor_val)
-          sampled <- sampled + 1
-        }
-      }
-      
-      if (sampled >= 100) break
-    }
-    
-    if (length(trend_cors) > 0) {
-      # Trends should be highly correlated (relative scaling preserves shape)
-      median_cor <- median(trend_cors, na.rm = TRUE)
+    if (trends$n_sampled > 0) {
       if (method == "relative") {
-        expect_true(median_cor > 0.95)
+        expect_true(trends$median_correlation > 0.95)
       } else {
-        # For lambda method, just report (trends may differ)
-        cat(sprintf("Median trend correlation (lambda method): %.4f\n", median_cor))
+        cat(sprintf("Median trend correlation (lambda method): %.4f\n",
+                    trends$median_correlation))
       }
     }
   })
