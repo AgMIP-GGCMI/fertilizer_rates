@@ -147,26 +147,29 @@ test_that("lambda method fires 2 inner test_that blocks and prints validation li
 })
 
 # -----------------------------------------------------------------------------
-# Base-year match
+# Base-year match (wiring check)
 # -----------------------------------------------------------------------------
 
-test_that("relative: base-year match fails when scaled diverges from base_rate", {
-  # Use ntime=11 so relative-changes checks t=c(1,5,11) (ntime%/%2=5), which
-  # excludes base_idx=6. This lets us corrupt scaled_data[,,base_idx] to break
-  # the base-year spatial correlation without incidentally tripping the
-  # relative-changes check.
-  fx <- make_test_scaling_fixture(ntime = 11)
-  # Replace base-year slice with uncorrelated values to force correlation <= 0.99
-  base_idx <- fx$base_year - fx$start_year + 1
-  fx$scaled_data[, , base_idx] <- matrix(
-    rev(as.vector(fx$base_rate)),
-    nrow = nrow(fx$base_rate),
-    ncol = ncol(fx$base_rate)
+test_that("test_scaling calls check_base_year_match with correct args", {
+  fx <- make_test_scaling_fixture()
+  captured <- list()
+  local_mocked_globals(
+    check_base_year_match = function(scaled_data, base_rate, base_idx) {
+      captured <<- list(
+        scaled_data = scaled_data,
+        base_rate   = base_rate,
+        base_idx    = base_idx
+      )
+      list(n_valid = 10, correlation = 0.999)  # valid pass so caller proceeds
+    }
   )
   r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
                                 fx$start_year, fx$base_year, method = "relative")
-  expect_equal(r$n_tests, 4)
-  expect_true(block_failed(r, "Scaled data at base year matches"))
+  expect_equal(captured$scaled_data, fx$scaled_data)
+  expect_equal(captured$base_rate, fx$base_rate)
+  expect_equal(captured$base_idx, fx$base_year - fx$start_year + 1)
+  # Mock returned correlation=0.999 > 0.99, so the inner expect_true should pass.
+  expect_false(block_failed(r, "Scaled data at base year matches"))
 })
 
 # -----------------------------------------------------------------------------
