@@ -392,6 +392,57 @@ check_trends_preserved <- function(scaled_data, timeseries,
 }
 
 # ============================================================================
+# FUNCTION: check_relative_changes_applied
+# ============================================================================
+# Sample up to max_attempts cells searching for one with a full valid time
+# series (sum(!is.na(ts_orig)) == ntime, non-NA positive base_rate, non-NA
+# positive base-year ts value). On success, computes expected vs. actual
+# scaled values at a fixed set of time steps — same indices as the original
+# inline code: c(1, ntime %/% 2, ntime). Returns list(found, checks) where
+# checks is a list of list(t, expected, actual). The caller applies the
+# tolerance (1e-5) via expect_equal.
+#
+# Preserves the current non-deterministic sample() behavior.
+# ============================================================================
+check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
+                                           base_idx, max_attempts = 1000) {
+  nlon <- dim(scaled_data)[1]
+  nlat <- dim(scaled_data)[2]
+  ntime <- dim(scaled_data)[3]
+
+  checks <- list()
+  found <- FALSE
+
+  timestep_indices <- c(1, ntime %/% 2, ntime)
+
+  for (attempt in 1:max_attempts) {
+    i <- sample(1:nlon, 1)
+    j <- sample(1:nlat, 1)
+
+    ts_orig <- timeseries[i, j, ]
+    ts_scaled <- scaled_data[i, j, ]
+
+    if (!is.na(base_rate[i, j]) && base_rate[i, j] > 0 &&
+        !is.na(ts_orig[base_idx]) && ts_orig[base_idx] > 0 &&
+        sum(!is.na(ts_orig)) == ntime) {
+
+      for (t in timestep_indices) {
+        rel_change <- ts_orig[t] / ts_orig[base_idx]
+        expected <- base_rate[i, j] * rel_change
+        checks[[length(checks) + 1]] <- list(
+          t = t, expected = expected, actual = ts_scaled[t]
+        )
+      }
+
+      found <- TRUE
+      break
+    }
+  }
+
+  list(found = found, checks = checks)
+}
+
+# ============================================================================
 # FUNCTION: test_scaling
 # ============================================================================
 # Test that scaling preserves trends and produces valid results
@@ -449,43 +500,15 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
   
   # Test relative changes only for relative method
   if (method == "relative") {
+    rel <- check_relative_changes_applied(scaled_data, timeseries, base_rate, base_idx)
     test_that("Relative changes are correctly applied", {
-    # Pick a cell with valid data throughout
-    nlon <- dim(scaled_data)[1]
-    nlat <- dim(scaled_data)[2]
-    ntime <- dim(scaled_data)[3]
-    
-    found <- FALSE
-    for (attempt in 1:1000) {
-      i <- sample(1:nlon, 1)
-      j <- sample(1:nlat, 1)
-      
-      # timeseries is [lon, lat, time]
-      ts_orig <- timeseries[i, j, ]
-      ts_scaled <- scaled_data[i, j, ]
-      
-      if (!is.na(base_rate[i, j]) && base_rate[i, j] > 0 &&
-          !is.na(ts_orig[base_idx]) && ts_orig[base_idx] > 0 &&
-          sum(!is.na(ts_orig)) == ntime) {
-        
-        # Calculate expected scaling for a few time steps
-        for (t in c(1, ntime %/% 2, ntime)) {
-          rel_change <- ts_orig[t] / ts_orig[base_idx]
-          expected <- base_rate[i, j] * rel_change
-          
-          # Should match within numerical precision
-          expect_equal(ts_scaled[t], expected, tolerance = 1e-5)
+      if (rel$found) {
+        for (check in rel$checks) {
+          expect_equal(check$actual, check$expected, tolerance = 1e-5)
         }
-        
-        found <- TRUE
-        break
+      } else {
+        warning("Could not find suitable cell for relative change test")
       }
-    }
-    
-    # Report if we couldn't find suitable test cell
-    if (!found) {
-      warning("Could not find suitable cell for relative change test")
-    }
     })
   }  # End of method == "relative" conditional
 }
