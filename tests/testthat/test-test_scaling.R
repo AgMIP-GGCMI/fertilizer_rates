@@ -274,3 +274,33 @@ test_that("trends-preserved: ntime<=10 records zero expectations (no failures)",
   # (ntime=5 full-valid cells satisfy sum(!is.na)==ntime).
   expect_equal(r$n_failures, 0)
 })
+
+test_that("test_scaling calls check_trends_preserved with scaled_data and timeseries", {
+  fx <- make_test_scaling_fixture()
+  captured <- list()
+  local_mocked_globals(
+    check_trends_preserved = function(scaled_data, timeseries, ...) {
+      captured <<- list(scaled_data = scaled_data, timeseries = timeseries)
+      list(n_sampled = 50, median_correlation = 0.99)  # valid pass
+    }
+  )
+  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
+                                fx$start_year, fx$base_year, method = "relative")
+  expect_equal(captured$scaled_data, fx$scaled_data)
+  expect_equal(captured$timeseries, fx$timeseries)
+  expect_false(block_failed(r, "Trends are preserved"))
+})
+
+test_that("test_scaling under lambda prints median correlation when n_sampled > 0", {
+  fx <- make_test_scaling_fixture()
+  local_mocked_globals(
+    check_trends_preserved = function(scaled_data, timeseries, ...) {
+      list(n_sampled = 50, median_correlation = 0.7777)
+    }
+  )
+  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
+                                fx$start_year, fx$base_year, method = "lambda")
+  expect_true(any(grepl("Median trend correlation \\(lambda method\\): 0\\.7777",
+                        r$output)))
+  expect_false(block_failed(r, "Trends are preserved"))
+})
