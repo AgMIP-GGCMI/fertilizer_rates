@@ -309,6 +309,140 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
 
 # ============================================================================
+# FUNCTION: check_base_year_match
+# ============================================================================
+# Compute the correlation between scaled_data's base-year slice and base_rate,
+# across cells valid in both. Returns list(n_valid, correlation) where
+# correlation is NA when n_valid == 0.
+# ============================================================================
+check_base_year_match <- function(scaled_data, base_rate, base_idx) {
+  scaled_base <- scaled_data[, , base_idx]
+  valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
+  n_valid <- sum(valid_cells)
+  correlation <- if (n_valid > 0) {
+    cor(
+      as.vector(base_rate[valid_cells]),
+      as.vector(scaled_base[valid_cells]),
+      use = "complete.obs"
+    )
+  } else {
+    NA_real_
+  }
+  list(n_valid = n_valid, correlation = correlation)
+}
+
+# ============================================================================
+# FUNCTION: check_no_negatives
+# ============================================================================
+# Returns TRUE iff every value in `scaled_data` is either NA or >= 0. Used
+# by test_scaling to flag physically-impossible negative fertilizer rates.
+#
+# Unlike the other check_* helpers, this returns a bare logical rather than
+# a list: callers need only the pass/fail bit. Upgrade to a named list if
+# future diagnostics need more detail (e.g., count or locations of
+# negatives).
+# ============================================================================
+check_no_negatives <- function(scaled_data) {
+  all(scaled_data >= 0 | is.na(scaled_data))
+}
+
+# ============================================================================
+# FUNCTION: check_trends_preserved
+# ============================================================================
+# Sample up to n_samples cells (attempting up to max_attempts times) and
+# compute the correlation between the original and scaled time series at
+# each sampled cell. Returns list(n_sampled, median_correlation) where
+# median_correlation is NA when no valid samples were collected.
+#
+# Preserves the current non-deterministic sample() behavior.
+# ============================================================================
+check_trends_preserved <- function(scaled_data, timeseries,
+                                   n_samples = 100, max_attempts = 1000) {
+  nlon <- dim(scaled_data)[1]
+  nlat <- dim(scaled_data)[2]
+
+  sampled <- 0
+  trend_cors <- numeric()
+
+  for (attempt in 1:max_attempts) {
+    i <- sample(1:nlon, 1)
+    j <- sample(1:nlat, 1)
+
+    ts_orig <- timeseries[i, j, ]
+    ts_scaled <- scaled_data[i, j, ]
+
+    if (sum(!is.na(ts_orig)) > 10 && sum(!is.na(ts_scaled)) > 10) {
+      valid <- !is.na(ts_orig) & !is.na(ts_scaled)
+      if (sum(valid) > 10 && sd(ts_orig[valid]) > 0 && sd(ts_scaled[valid]) > 0) {
+        cor_val <- cor(ts_orig[valid], ts_scaled[valid])
+        trend_cors <- c(trend_cors, cor_val)
+        sampled <- sampled + 1
+      }
+    }
+
+    if (sampled >= n_samples) break
+  }
+
+  median_correlation <- if (length(trend_cors) > 0) {
+    median(trend_cors, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  list(n_sampled = sampled, median_correlation = median_correlation)
+}
+
+# ============================================================================
+# FUNCTION: check_relative_changes_applied
+# ============================================================================
+# Sample up to max_attempts cells searching for one with a full valid time
+# series (sum(!is.na(ts_orig)) == ntime, non-NA positive base_rate, non-NA
+# positive base-year ts value). On success, computes expected vs. actual
+# scaled values at a fixed set of time steps — same indices as the original
+# inline code: c(1, ntime %/% 2, ntime). Returns list(found, checks) where
+# checks is a list of list(t, expected, actual). The caller applies the
+# tolerance (1e-5) via expect_equal.
+#
+# Preserves the current non-deterministic sample() behavior.
+# ============================================================================
+check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
+                                           base_idx, max_attempts = 1000) {
+  nlon <- dim(scaled_data)[1]
+  nlat <- dim(scaled_data)[2]
+  ntime <- dim(scaled_data)[3]
+
+  checks <- list()
+  found <- FALSE
+
+  timestep_indices <- c(1, ntime %/% 2, ntime)
+
+  for (attempt in 1:max_attempts) {
+    i <- sample(1:nlon, 1)
+    j <- sample(1:nlat, 1)
+
+    ts_orig <- timeseries[i, j, ]
+    ts_scaled <- scaled_data[i, j, ]
+
+    if (!is.na(base_rate[i, j]) && base_rate[i, j] > 0 &&
+        !is.na(ts_orig[base_idx]) && ts_orig[base_idx] > 0 &&
+        sum(!is.na(ts_orig)) == ntime) {
+
+      for (t in timestep_indices) {
+        rel_change <- ts_orig[t] / ts_orig[base_idx]
+        expected <- base_rate[i, j] * rel_change
+        checks[[length(checks) + 1]] <- list(
+          t = t, expected = expected, actual = ts_scaled[t]
+        )
+      }
+
+      found <- TRUE
+      break
+    }
+  }
+
+  list(found = found, checks = checks)
+}
+
+# ============================================================================
 # FUNCTION: test_scaling
 # ============================================================================
 # Test that scaling preserves trends and produces valid results
@@ -322,133 +456,59 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 #   method: Scaling method ("relative" or "lambda")
 #
 # Tests:
-#   1. Trends are preserved (correlation between scaled and original trends)
-#   2. Base year values match original pattern (only for "relative" method)
-#   3. No negative values introduced
-#   4. Relative changes are correctly applied
+#   1. Base year values match original pattern (relative method only)
+#   2. No negative values introduced
+#   3. Trends are preserved from the time series
+#   4. Relative changes are correctly applied (relative method only)
 # ============================================================================
 test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_year, method = "relative") {
-  
+
   base_idx <- base_year - start_year + 1
-  
+
   # Test 1: Base year match - only applies to relative method
+  bym <- check_base_year_match(scaled_data, base_rate, base_idx)
   if (method == "relative") {
     test_that("Scaled data at base year matches original pattern (relative method)", {
-      # Extract base year from scaled data [lon, lat]
-      scaled_base <- scaled_data[, , base_idx]
-      
-      # Compare (accounting for NA positions)
-      valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
-      if (sum(valid_cells) > 0) {
-        # Should be very close (allowing for numerical precision)
-        expect_true(cor(as.vector(base_rate[valid_cells]), 
-                       as.vector(scaled_base[valid_cells]), 
-                       use = "complete.obs") > 0.99)
+      if (bym$n_valid > 0) {
+        expect_true(bym$correlation > 0.99)
       }
     })
   } else {
     # For lambda method, just report correlation (informational only)
     cat(sprintf("\n=== Lambda Method Validation ===\n"))
-    scaled_base <- scaled_data[, , base_idx]
-    valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
-    if (sum(valid_cells) > 0) {
-      # Pattern should still be correlated, just not identical
-      cor_val <- cor(as.vector(base_rate[valid_cells]), 
-                    as.vector(scaled_base[valid_cells]), 
-                    use = "complete.obs")
-      cat(sprintf("Base year spatial correlation: %.4f\n", cor_val))
+    if (bym$n_valid > 0) {
+      cat(sprintf("Base year spatial correlation: %.4f\n", bym$correlation))
       cat(sprintf("Note: Lambda method doesn't preserve exact base year values\n"))
     }
   }
-  
+
   test_that("No negative values introduced by scaling", {
-    # Negative fertilizer rates are physically impossible
-    expect_true(all(scaled_data >= 0 | is.na(scaled_data)))
+    expect_true(check_no_negatives(scaled_data))
   })
-  
+
+  trends <- check_trends_preserved(scaled_data, timeseries)
   test_that("Trends are preserved from time series", {
-    # Sample some grid cells and check if trends match
-    nlon <- dim(scaled_data)[1]
-    nlat <- dim(scaled_data)[2]
-    ntime <- dim(scaled_data)[3]
-    
-    # Sample 100 random cells with data
-    sampled <- 0
-    trend_cors <- numeric()
-    
-    for (attempt in 1:1000) {
-      i <- sample(1:nlon, 1)
-      j <- sample(1:nlat, 1)
-      
-      # Check if both have valid time series
-      # timeseries is [lon, lat, time]
-      ts_orig <- timeseries[i, j, ]
-      ts_scaled <- scaled_data[i, j, ]
-      
-      if (sum(!is.na(ts_orig)) > 10 && sum(!is.na(ts_scaled)) > 10) {
-        # Calculate correlation of trends
-        valid <- !is.na(ts_orig) & !is.na(ts_scaled)
-        if (sum(valid) > 10 && sd(ts_orig[valid]) > 0 && sd(ts_scaled[valid]) > 0) {
-          cor_val <- cor(ts_orig[valid], ts_scaled[valid])
-          trend_cors <- c(trend_cors, cor_val)
-          sampled <- sampled + 1
-        }
-      }
-      
-      if (sampled >= 100) break
-    }
-    
-    if (length(trend_cors) > 0) {
-      # Trends should be highly correlated (relative scaling preserves shape)
-      median_cor <- median(trend_cors, na.rm = TRUE)
+    if (trends$n_sampled > 0) {
       if (method == "relative") {
-        expect_true(median_cor > 0.95)
+        expect_true(trends$median_correlation > 0.95)
       } else {
-        # For lambda method, just report (trends may differ)
-        cat(sprintf("Median trend correlation (lambda method): %.4f\n", median_cor))
+        cat(sprintf("Median trend correlation (lambda method): %.4f\n",
+                    trends$median_correlation))
       }
     }
   })
-  
+
   # Test relative changes only for relative method
   if (method == "relative") {
+    rel <- check_relative_changes_applied(scaled_data, timeseries, base_rate, base_idx)
     test_that("Relative changes are correctly applied", {
-    # Pick a cell with valid data throughout
-    nlon <- dim(scaled_data)[1]
-    nlat <- dim(scaled_data)[2]
-    ntime <- dim(scaled_data)[3]
-    
-    found <- FALSE
-    for (attempt in 1:1000) {
-      i <- sample(1:nlon, 1)
-      j <- sample(1:nlat, 1)
-      
-      # timeseries is [lon, lat, time]
-      ts_orig <- timeseries[i, j, ]
-      ts_scaled <- scaled_data[i, j, ]
-      
-      if (!is.na(base_rate[i, j]) && base_rate[i, j] > 0 &&
-          !is.na(ts_orig[base_idx]) && ts_orig[base_idx] > 0 &&
-          sum(!is.na(ts_orig)) == ntime) {
-        
-        # Calculate expected scaling for a few time steps
-        for (t in c(1, ntime %/% 2, ntime)) {
-          rel_change <- ts_orig[t] / ts_orig[base_idx]
-          expected <- base_rate[i, j] * rel_change
-          
-          # Should match within numerical precision
-          expect_equal(ts_scaled[t], expected, tolerance = 1e-5)
+      if (rel$found) {
+        for (check in rel$checks) {
+          expect_equal(check$actual, check$expected, tolerance = 1e-5)
         }
-        
-        found <- TRUE
-        break
+      } else {
+        warning("Could not find suitable cell for relative change test")
       }
-    }
-    
-    # Report if we couldn't find suitable test cell
-    if (!found) {
-      warning("Could not find suitable cell for relative change test")
-    }
     })
   }  # End of method == "relative" conditional
 }
