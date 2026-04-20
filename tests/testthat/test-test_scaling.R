@@ -195,26 +195,6 @@ test_that("test_scaling calls check_no_negatives with scaled_data", {
 # Trends preserved
 # -----------------------------------------------------------------------------
 
-test_that("relative: random data fails base-year, trends, and relative-changes", {
-  fx <- make_test_scaling_fixture()
-  fx$scaled_data <- withr::with_seed(42, array(
-    runif(length(fx$scaled_data), min = 0.1, max = 100),
-    dim = dim(fx$scaled_data)
-  ))
-  # runif(min=0.1) guarantees no-negatives passes. The random values break
-  # the base-year pattern, per-cell trends, and relative-change ratios.
-  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
-                                fx$start_year, fx$base_year, method = "relative")
-  expect_true(block_failed(r, "Scaled data at base year matches"))
-  expect_true(block_failed(r, "Trends are preserved"))
-  expect_true(block_failed(r, "Relative changes are correctly applied"))
-  # Guard the runif(min=0.1) choice: it's specifically bounded positive so
-  # the no-negatives block cannot fire. If someone later switches to rnorm()
-  # or allows negative values, this claim would silently weaken to "all four
-  # blocks fail" and the test title would lie.
-  expect_false(block_failed(r, "No negative values"))
-})
-
 test_that("lambda: random data that breaks relative does NOT cause lambda to fail", {
   fx <- make_test_scaling_fixture()
   fx$scaled_data <- withr::with_seed(42, array(
@@ -229,31 +209,6 @@ test_that("lambda: random data that breaks relative does NOT cause lambda to fai
   # n_failures must be 0 here. This contrast is what proves lambda's
   # "informational only" semantics for its inner blocks.
   expect_equal(r$n_failures, 0)
-})
-
-# -----------------------------------------------------------------------------
-# Relative changes correctly applied
-# -----------------------------------------------------------------------------
-
-test_that("relative-changes fails when scaling is off by a factor", {
-  fx <- make_test_scaling_fixture()
-  # Double all scaled values → rel_change will mismatch expected by 2x everywhere
-  fx$scaled_data <- fx$scaled_data * 2
-  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
-                                fx$start_year, fx$base_year, method = "relative")
-  expect_true(block_failed(r, "Relative changes are correctly applied"))
-})
-
-test_that("relative-changes warns when no suitable cell is found", {
-  fx <- make_test_scaling_fixture()
-  # Break every cell's time series by setting the base-year slice to NA so
-  # no cell has sum(!is.na(ts_orig)) == ntime.
-  base_idx <- fx$base_year - fx$start_year + 1
-  fx$timeseries[, , base_idx] <- NA_real_
-  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
-                                fx$start_year, fx$base_year, method = "relative")
-  expect_true(any(grepl("Could not find suitable cell for relative change test",
-                        r$warnings)))
 })
 
 # -----------------------------------------------------------------------------
@@ -303,4 +258,55 @@ test_that("test_scaling under lambda prints median correlation when n_sampled > 
   expect_true(any(grepl("Median trend correlation \\(lambda method\\): 0\\.7777",
                         r$output)))
   expect_false(block_failed(r, "Trends are preserved"))
+})
+
+test_that("test_scaling calls check_relative_changes_applied with all four args (relative)", {
+  fx <- make_test_scaling_fixture()
+  captured <- list()
+  local_mocked_globals(
+    check_relative_changes_applied = function(scaled_data, timeseries, base_rate,
+                                              base_idx, ...) {
+      captured <<- list(
+        scaled_data = scaled_data,
+        timeseries  = timeseries,
+        base_rate   = base_rate,
+        base_idx    = base_idx
+      )
+      list(found = TRUE, checks = list())  # empty checks → no expect_* fires
+    }
+  )
+  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
+                                fx$start_year, fx$base_year, method = "relative")
+  expect_equal(captured$scaled_data, fx$scaled_data)
+  expect_equal(captured$timeseries, fx$timeseries)
+  expect_equal(captured$base_rate, fx$base_rate)
+  expect_equal(captured$base_idx, fx$base_year - fx$start_year + 1)
+  expect_false(block_failed(r, "Relative changes are correctly applied"))
+})
+
+test_that("test_scaling does NOT call check_relative_changes_applied under lambda", {
+  fx <- make_test_scaling_fixture()
+  call_count <- 0
+  local_mocked_globals(
+    check_relative_changes_applied = function(...) {
+      call_count <<- call_count + 1
+      list(found = TRUE, checks = list())
+    }
+  )
+  run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
+                           fx$start_year, fx$base_year, method = "lambda")
+  expect_equal(call_count, 0)
+})
+
+test_that("test_scaling warns when check_relative_changes_applied returns found=FALSE", {
+  fx <- make_test_scaling_fixture()
+  local_mocked_globals(
+    check_relative_changes_applied = function(...) {
+      list(found = FALSE, checks = list())
+    }
+  )
+  r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
+                                fx$start_year, fx$base_year, method = "relative")
+  expect_true(any(grepl("Could not find suitable cell for relative change test",
+                        r$warnings)))
 })
