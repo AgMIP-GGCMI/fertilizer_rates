@@ -309,6 +309,29 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
 
 # ============================================================================
+# FUNCTION: check_base_year_match
+# ============================================================================
+# Compute the correlation between scaled_data's base-year slice and base_rate,
+# across cells valid in both. Returns list(n_valid, correlation) where
+# correlation is NA when n_valid == 0.
+# ============================================================================
+check_base_year_match <- function(scaled_data, base_rate, base_idx) {
+  scaled_base <- scaled_data[, , base_idx]
+  valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
+  n_valid <- sum(valid_cells)
+  correlation <- if (n_valid > 0) {
+    cor(
+      as.vector(base_rate[valid_cells]),
+      as.vector(scaled_base[valid_cells]),
+      use = "complete.obs"
+    )
+  } else {
+    NA_real_
+  }
+  list(n_valid = n_valid, correlation = correlation)
+}
+
+# ============================================================================
 # FUNCTION: test_scaling
 # ============================================================================
 # Test that scaling preserves trends and produces valid results
@@ -328,35 +351,22 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 #   4. Relative changes are correctly applied
 # ============================================================================
 test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_year, method = "relative") {
-  
+
   base_idx <- base_year - start_year + 1
-  
+
   # Test 1: Base year match - only applies to relative method
+  bym <- check_base_year_match(scaled_data, base_rate, base_idx)
   if (method == "relative") {
     test_that("Scaled data at base year matches original pattern (relative method)", {
-      # Extract base year from scaled data [lon, lat]
-      scaled_base <- scaled_data[, , base_idx]
-      
-      # Compare (accounting for NA positions)
-      valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
-      if (sum(valid_cells) > 0) {
-        # Should be very close (allowing for numerical precision)
-        expect_true(cor(as.vector(base_rate[valid_cells]), 
-                       as.vector(scaled_base[valid_cells]), 
-                       use = "complete.obs") > 0.99)
+      if (bym$n_valid > 0) {
+        expect_true(bym$correlation > 0.99)
       }
     })
   } else {
     # For lambda method, just report correlation (informational only)
     cat(sprintf("\n=== Lambda Method Validation ===\n"))
-    scaled_base <- scaled_data[, , base_idx]
-    valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
-    if (sum(valid_cells) > 0) {
-      # Pattern should still be correlated, just not identical
-      cor_val <- cor(as.vector(base_rate[valid_cells]), 
-                    as.vector(scaled_base[valid_cells]), 
-                    use = "complete.obs")
-      cat(sprintf("Base year spatial correlation: %.4f\n", cor_val))
+    if (bym$n_valid > 0) {
+      cat(sprintf("Base year spatial correlation: %.4f\n", bym$correlation))
       cat(sprintf("Note: Lambda method doesn't preserve exact base year values\n"))
     }
   }
