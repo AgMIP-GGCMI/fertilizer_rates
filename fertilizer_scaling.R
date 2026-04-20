@@ -87,10 +87,19 @@ library(MASS)
 
 # settings
 
-# input paths
-base_path_5min <- "/p/projects/ikiimp/5min_input/toolbox_paper_application/fertilizer_paper/tmp/work_5min"
-base_path_timeseries <- "/p/projects/isimip/isimip/ISIMIP3b/InputData/socioeconomic/n-fertilizer"
-output_base_path <- "/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/n-fertilizer/group_iii"
+# input/output paths (override via .Renviron, which is in .gitignore)
+base_path_5min <- Sys.getenv(
+  "FERT_BASE_PATH_5MIN",
+  "/p/projects/ikiimp/5min_input/toolbox_paper_application/fertilizer_paper/tmp/work_5min"
+)
+base_path_timeseries <- Sys.getenv(
+  "FERT_BASE_PATH_TIMESERIES",
+  "/p/projects/isimip/isimip/ISIMIP3b/InputData/socioeconomic/n-fertilizer"
+)
+output_base_path <- Sys.getenv(
+  "FERT_OUTPUT_BASE_PATH",
+  "/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/n-fertilizer/group_iii"
+)
 
 # crop definitions
 cropnames <- c("swh", "wwh", "mai", "ri1", "ri2", "soy", "mil", "sor", "pea", "sgb", "cas", "rap", "sun", "nut", "sgc")
