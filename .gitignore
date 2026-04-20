@@ -5,3 +5,4 @@
 .worktrees/
 *html
 lib/
+.Renviron
