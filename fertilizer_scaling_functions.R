@@ -334,8 +334,13 @@ check_base_year_match <- function(scaled_data, base_rate, base_idx) {
 # ============================================================================
 # FUNCTION: check_no_negatives
 # ============================================================================
-# TRUE when all non-NA values in scaled_data are non-negative. NA cells are
-# ignored. Returns a single logical.
+# Returns TRUE iff every value in `scaled_data` is either NA or >= 0. Used
+# by test_scaling to flag physically-impossible negative fertilizer rates.
+#
+# Unlike the other check_* helpers, this returns a bare logical rather than
+# a list: callers need only the pass/fail bit. Upgrade to a named list if
+# future diagnostics need more detail (e.g., count or locations of
+# negatives).
 # ============================================================================
 check_no_negatives <- function(scaled_data) {
   all(scaled_data >= 0 | is.na(scaled_data))
