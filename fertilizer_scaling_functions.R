@@ -1489,7 +1489,15 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     }
     
   }  # End of method loop
-  
+
+  # Compare relative vs lambda outputs (both NetCDFs now exist)
+  comparison_dir <- if (scenario == "histsoc") {
+    paste0(output_base_path, "/", scenario)
+  } else {
+    paste0(output_base_path, "/", scenario, "soc-adapt")
+  }
+  compare_relative_lambda(crop, scenario, iam, gcm, output_dir = comparison_dir)
+
   print(paste("Completed processing for", crop, scenario))
 }
 
