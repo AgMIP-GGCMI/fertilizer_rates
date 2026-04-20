@@ -6,11 +6,15 @@
 # the test files. This helper temporarily rebinds names there and restores
 # them on test exit.
 #
-# Target env for rebinding: parent.env(environment()) — the helper's own
-# lexical enclosing env, i.e. whichever env sourced this file. Under the
-# normal testthat::test_dir() flow that's globalenv(); under
-# covr::file_coverage() it's covr's instrumented env. This makes the helper
-# work under both.
+# Target env for rebinding: start at parent.env(environment()) — the helper's
+# own lexical enclosing env — and walk up the parent chain until we find an
+# env that actually owns the first name the caller wants to mock. This makes
+# the helper work under both test flows:
+#   * testthat::test_dir() sources helpers into a child of globalenv(), while
+#     setup.R's source() call puts production functions into globalenv()
+#     itself. The walk therefore advances one step to globalenv().
+#   * covr::file_coverage() sources helpers and the instrumented production
+#     functions into the same child env. The walk stops immediately.
 #
 # Only rebinds names already present in that env (no walking up the search
 # path). Callers who try to mock names not bound there get a clear error
