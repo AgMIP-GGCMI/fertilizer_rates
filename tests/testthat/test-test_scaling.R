@@ -173,19 +173,22 @@ test_that("test_scaling calls check_base_year_match with correct args", {
 })
 
 # -----------------------------------------------------------------------------
-# No negatives
+# No negatives (wiring check)
 # -----------------------------------------------------------------------------
 
-test_that("no-negatives fails when scaled_data contains a negative value", {
+test_that("test_scaling calls check_no_negatives with scaled_data", {
   fx <- make_test_scaling_fixture()
-  fx$scaled_data[1, 1, 2] <- -5
+  captured <- list()
+  local_mocked_globals(
+    check_no_negatives = function(scaled_data) {
+      captured <<- list(scaled_data = scaled_data)
+      TRUE  # valid pass
+    }
+  )
   r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
                                 fx$start_year, fx$base_year, method = "relative")
-  expect_true(block_failed(r, "No negative values"))
-  # Guard the fixture's t=2 choice: if the negative-value injection leaked
-  # into the relative-changes check (which samples t=1, ntime%/%2, ntime),
-  # the isolation we designed in would silently disappear. Fail loudly.
-  expect_false(block_failed(r, "Relative changes are correctly applied"))
+  expect_equal(captured$scaled_data, fx$scaled_data)
+  expect_false(block_failed(r, "No negative values"))
 })
 
 # -----------------------------------------------------------------------------
