@@ -1,9 +1,9 @@
 # Tests for test_scaling() in fertilizer_scaling_functions.R.
 #
-# These tests run against the current implementation to lock down behavior
-# before modularization. They use testthat::ListReporter + with_reporter()
-# to inspect inner test_that outcomes without letting that output pollute
-# the outer runner.
+# These tests lock down the end-to-end behavior of test_scaling() across the
+# modularization refactor and verify wiring to the extracted check_* helpers.
+# They use testthat::ListReporter + with_reporter() to inspect inner test_that
+# outcomes without letting that output pollute the outer runner.
 
 # -----------------------------------------------------------------------------
 # Fixture
