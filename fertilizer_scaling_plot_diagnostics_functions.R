@@ -178,3 +178,39 @@ plot_aggregation_comparison <- function(base_rate, spatial_data_5min, lon, lat,
 
   par(mfrow = c(4, 3), mar = c(4, 4, 3, 6))
 }
+
+# ----------------------------------------------------------------------------
+# plot_pattern_maps
+# ----------------------------------------------------------------------------
+# Renders the five map panels: original pattern (year 2000), scaled first /
+# middle / last, and the last-first difference map (diverging palette).
+# ----------------------------------------------------------------------------
+plot_pattern_maps <- function(base_rate, scaled_data, lon, lat, sample_locations,
+                              start_year, end_year, mid_idx, crop, method) {
+  ntime <- dim(scaled_data)[3]
+  mid_year <- start_year + mid_idx - 1
+
+  plot_map(lon, lat, base_rate,
+           paste(crop, "- Original Pattern (Year 2000) [Method:", method, "]"),
+           sample_locations = sample_locations)
+
+  plot_map(lon, lat, scaled_data[, , 1],
+           paste(crop, "- Scaled Pattern (Year", start_year, ")"),
+           sample_locations = sample_locations)
+
+  plot_map(lon, lat, scaled_data[, , mid_idx],
+           paste(crop, "- Scaled Pattern (Year", mid_year, ")"),
+           sample_locations = sample_locations)
+
+  plot_map(lon, lat, scaled_data[, , ntime],
+           paste(crop, "- Scaled Pattern (Year", end_year, ")"),
+           sample_locations = sample_locations)
+
+  first_year_data <- scaled_data[, , 1]
+  last_year_data <- scaled_data[, , ntime]
+  diff_map <- last_year_data - first_year_data
+
+  plot_map(lon, lat, diff_map,
+           paste(crop, "- Change (", end_year, "-", start_year, ")"),
+           diverging = TRUE, sample_locations = sample_locations)
+}
