@@ -5,6 +5,8 @@
 # it is safe to source from tests or other scripts without side effects.
 # ============================================================================
 
+source("fertilizer_scaling_plot_diagnostics_functions.R")
+
 # ============================================================================
 # FUNCTION: aggregate_to_halfdegree
 # ============================================================================
@@ -569,16 +571,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   par(mfrow = c(4, 3), mar = c(4, 4, 3, 6))
   
   # Define sample locations early for overlay on maps
-  sample_locations <- data.frame(
-    lat = c(8.0, 9.5, 26.0, -30.0, 40.0, 42.0, 30.0, 34.0, -15.0, -23.0),
-    lon = c(-2.0, 37.0, 87.0, -60.0, -5.0, -93.5, 75.0, 114.0, -48.0, -47.0),
-    description = c(
-      "W Africa (Ghana)", "E Africa (Ethiopia)", "E India (Bihar)", 
-      "S Brazil (RS)", "N Spain", "US Iowa", "NW India (Punjab)", 
-      "N China (Henan)", "C Brazil (Mato Grosso)", "SE Brazil (SP)"
-    ),
-    stringsAsFactors = FALSE
-  )
+  sample_locations <- build_sample_locations()
   
   # Find nearest valid cells for markers (will be used in time series plot)
   sample_cells_for_ts <- list()
