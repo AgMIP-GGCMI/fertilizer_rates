@@ -51,3 +51,55 @@ add_sample_markers <- function(lon, lat, sample_locations) {
     text(marker_lon, marker_lat, k, cex = 0.5, col = "black", font = 2)
   }
 }
+
+# ----------------------------------------------------------------------------
+# plot_map
+# ----------------------------------------------------------------------------
+# Renders a single 2D map with symmetric or sequential color scaling.
+# Optionally overlays sample-location markers.
+#
+# Args:
+#   lon, lat: Grid-cell coordinate vectors.
+#   data: [nlon x nlat] matrix to plot.
+#   title: Plot title.
+#   diverging: If TRUE, use a zero-centered diverging palette.
+#   add_markers: If TRUE, overlay sample-location markers (requires
+#     sample_locations to be non-NULL).
+#   sample_locations: Data frame from build_sample_locations(). Required
+#     when add_markers = TRUE.
+# ----------------------------------------------------------------------------
+plot_map <- function(lon, lat, data, title, diverging = FALSE,
+                     add_markers = TRUE, sample_locations = NULL) {
+  data_plot <- data[, c(length(lat):1)]
+
+  valid_data <- data_plot[is.finite(data_plot) & abs(data_plot) < 1e+10]
+  if (length(valid_data) > 0) {
+    zlim <- range(valid_data, na.rm = TRUE)
+    if (diverging) {
+      max_abs <- max(abs(zlim), na.rm = TRUE)
+      zlim <- c(-max_abs, max_abs)
+    }
+  } else {
+    zlim <- c(0, 1)
+  }
+
+  if (diverging) {
+    col_ramp <- colorRampPalette(c("#2166ac", "#4393c3", "#92c5de", "#d1e5f0",
+                                    "#f7f7f7",
+                                    "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
+  } else {
+    col_ramp <- colorRampPalette(c("#2166ac", "#67a9cf", "#d1e5f0", "#fefebe",
+                                    "#fddbc7", "#ef8a62", "#b2182b"))(100)
+  }
+
+  image.plot(lon, lat, data_plot,
+             main = title,
+             xlab = "Longitude", ylab = "Latitude",
+             col = col_ramp,
+             zlim = zlim,
+             ylim = c(-65, 90))
+
+  if (add_markers) {
+    add_sample_markers(lon, lat, sample_locations)
+  }
+}
