@@ -589,73 +589,9 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   plot_sample_timeseries(base_rate, scaled_data, timeseries, lon, lat,
                          start_year, end_year, sample_locations, crop)
 
-  # Plot 10: Histogram - Spatial base vs Scaled last
-  base_vals <- base_rate[is.finite(base_rate) & base_rate > 0]
-  scaled_last_vals <- scaled_data[, , ntime][is.finite(scaled_data[, , ntime]) & scaled_data[, , ntime] > 0]
-  
-  if (length(base_vals) > 0 && length(scaled_last_vals) > 0) {
-    x_range <- range(c(base_vals, scaled_last_vals), na.rm = TRUE)
-    breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
-    
-    hist(base_vals, breaks = breaks_seq, col = rgb(0, 0, 1, 0.5), 
-         main = paste("Spatial Base vs Scaled"),
-         xlab = "N Rate (kg/ha)", ylab = "Frequency",
-         xlim = x_range)
-    hist(scaled_last_vals, breaks = breaks_seq, col = rgb(1, 0, 0, 0.5), add = TRUE)
-    
-    legend("topright", 
-           legend = c(paste("Base", base_year), paste("Scaled", end_year)),
-           fill = c(rgb(0, 0, 1, 0.5), rgb(1, 0, 0, 0.5)),
-           cex = 0.8, bty = "n")
-  } else {
-    plot.new(); text(0.5, 0.5, "No data")
-  }
-  
-  # Plot 11: Histogram - Original time series base vs last
-  ts_base_vals <- timeseries[, , base_idx][is.finite(timeseries[, , base_idx]) & timeseries[, , base_idx] > 0]
-  ts_last_vals <- timeseries[, , ntime][is.finite(timeseries[, , ntime]) & timeseries[, , ntime] > 0]
-  
-  if (length(ts_base_vals) > 0 && length(ts_last_vals) > 0) {
-    x_range <- range(c(ts_base_vals, ts_last_vals), na.rm = TRUE)
-    breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
-    
-    hist(ts_base_vals, breaks = breaks_seq, col = rgb(0, 0.6, 0, 0.5), 
-         main = paste("Original TS"),
-         xlab = "N Rate (kg/ha)", ylab = "Frequency",
-         xlim = x_range)
-    hist(ts_last_vals, breaks = breaks_seq, col = rgb(1, 0.5, 0, 0.5), add = TRUE)
-    
-    legend("topright", 
-           legend = c(paste("TS", base_year), paste("TS", end_year)),
-           fill = c(rgb(0, 0.6, 0, 0.5), rgb(1, 0.5, 0, 0.5)),
-           cex = 0.8, bty = "n")
-  } else {
-    plot.new(); text(0.5, 0.5, "No data")
-  }
-  
-  # Plot 12: Histogram - Changes (deltas)
-  change_scaled <- (scaled_data[, , ntime] - base_rate)[is.finite(scaled_data[, , ntime] - base_rate)]
-  change_ts <- (timeseries[, , ntime] - timeseries[, , base_idx])[is.finite(timeseries[, , ntime] - timeseries[, , base_idx])]
-  
-  if (length(change_scaled) > 0 && length(change_ts) > 0) {
-    x_range <- range(c(change_scaled, change_ts), na.rm = TRUE)
-    breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
-    
-    hist(change_scaled, breaks = breaks_seq, col = rgb(0.5, 0, 0.5, 0.5), 
-         main = paste("Changes:", end_year, "-", base_year),
-         xlab = "Change in N Rate (kg/ha)", ylab = "Frequency",
-         xlim = x_range)
-    hist(change_ts, breaks = breaks_seq, col = rgb(0.7, 0.7, 0, 0.5), add = TRUE)
-    abline(v = 0, col = "black", lwd = 2, lty = 2)
-    
-    legend("topright", 
-           legend = c("Scaled change", "TS change"),
-           fill = c(rgb(0.5, 0, 0.5, 0.5), rgb(0.7, 0.7, 0, 0.5)),
-           cex = 0.8, bty = "n")
-  } else {
-    plot.new(); text(0.5, 0.5, "No data")
-  }
-  
+  plot_distribution_histograms(base_rate, scaled_data, timeseries, base_idx,
+                               base_year, end_year, crop)
+
   # ---- Page 2 for additional diagnostics ----
   
   # Plot 13: Scatter - Scaling factor vs Final value with log scale (ALL data)
