@@ -559,3 +559,129 @@ plot_distribution_histograms <- function(base_rate, scaled_data, timeseries,
     plot.new(); text(0.5, 0.5, "No data")
   }
 }
+
+# ----------------------------------------------------------------------------
+# plot_outlier_scatter
+# ----------------------------------------------------------------------------
+# Renders two scatter plots on a new PDF page: scaling factor vs final
+# value with log-scale y-axis, and an outliers-only detail scatter with
+# coloring by base-rate quartile. Prints analysis stats to the console.
+# ----------------------------------------------------------------------------
+plot_outlier_scatter <- function(base_rate, scaled_data, timeseries,
+                                 base_idx, base_year, end_year) {
+  ntime <- dim(scaled_data)[3]
+
+  scaling_factors <- (timeseries[, , ntime] / timeseries[, , base_idx])
+  final_values <- scaled_data[, , ntime]
+
+  sf_flat <- as.vector(scaling_factors)
+  fv_flat <- as.vector(final_values)
+  valid_mask <- is.finite(sf_flat) & is.finite(fv_flat) &
+                sf_flat > 0 & sf_flat < Inf & fv_flat > 0
+
+  sf_valid <- sf_flat[valid_mask]
+  fv_valid <- fv_flat[valid_mask]
+
+  if (length(sf_valid) > 100) {
+    outlier_threshold <- 1000
+    is_outlier <- fv_valid > outlier_threshold
+
+    point_colors <- ifelse(is_outlier, rgb(1, 0, 0, 0.7), rgb(0, 0, 1, 0.2))
+
+    plot(sf_valid, fv_valid,
+         pch = 16, cex = 0.4, col = point_colors,
+         log = "y",
+         main = paste("Scaling Factor vs Final Value - Log Scale (", end_year, ")", sep = ""),
+         xlab = paste("Scaling Factor (", end_year, "/", base_year, ")", sep = ""),
+         ylab = paste("Final Scaled Value (kg/ha, ", end_year, ") [LOG SCALE]", sep = ""))
+
+    abline(v = 1, col = "gray50", lwd = 2, lty = 2)
+    abline(h = outlier_threshold, col = "red", lwd = 2, lty = 2)
+
+    n_outliers <- sum(is_outlier)
+    pct_outliers <- 100 * n_outliers / length(fv_valid)
+    median_sf_normal <- median(sf_valid[!is_outlier], na.rm = TRUE)
+    median_sf_outlier <- if(n_outliers > 0) median(sf_valid[is_outlier], na.rm = TRUE) else NA
+
+    legend("bottomright",
+           legend = c(
+             paste("Normal (n=", format(sum(!is_outlier), big.mark = ","), ")", sep = ""),
+             paste("Outliers >", outlier_threshold, " (n=", format(n_outliers, big.mark = ","), ")", sep = ""),
+             paste("Med SF normal:", sprintf("%.2f", median_sf_normal)),
+             if(!is.na(median_sf_outlier)) paste("Med SF outliers:", sprintf("%.2f", median_sf_outlier)) else NULL
+           ),
+           col = c(rgb(0, 0, 1, 0.6), rgb(1, 0, 0, 0.7), NA, NA),
+           pch = c(16, 16, NA, NA),
+           cex = 0.7, bty = "n")
+
+    cat("\n=== Scaling Factor vs Outlier Analysis ===\n")
+    cat(sprintf("Total cells: %s\n", format(length(fv_valid), big.mark = ",")))
+    cat(sprintf("Outliers (>%d kg/ha): %s (%.1f%%)\n",
+                outlier_threshold, format(n_outliers, big.mark = ","), pct_outliers))
+    cat(sprintf("Median scaling factor (normal): %.2f\n", median_sf_normal))
+    if (n_outliers > 0) {
+      cat(sprintf("Median scaling factor (outliers): %.2f\n", median_sf_outlier))
+      cat(sprintf("Range of outlier values: %.0f - %.0f kg/ha\n",
+                  min(fv_valid[is_outlier], na.rm = TRUE),
+                  max(fv_valid[is_outlier], na.rm = TRUE)))
+      cat(sprintf("Range of outlier scaling factors: %.2f - %.2f\n",
+                  min(sf_valid[is_outlier], na.rm = TRUE),
+                  max(sf_valid[is_outlier], na.rm = TRUE)))
+    }
+
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Insufficient data for scatter plot")
+  }
+
+  if (length(sf_valid) > 100 && sum(is_outlier) > 0) {
+    sf_outliers <- sf_valid[is_outlier]
+    fv_outliers <- fv_valid[is_outlier]
+
+    base_flat <- as.vector(base_rate)
+    base_valid <- base_flat[valid_mask]
+    base_outliers <- base_valid[is_outlier]
+
+    base_quartiles <- quantile(base_outliers, probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+    outlier_colors <- ifelse(base_outliers < base_quartiles[1], rgb(1, 0.8, 0, 0.6),
+                       ifelse(base_outliers < base_quartiles[2], rgb(1, 0.5, 0, 0.6),
+                       ifelse(base_outliers < base_quartiles[3], rgb(1, 0.2, 0, 0.6),
+                              rgb(0.8, 0, 0, 0.6))))
+
+    plot(sf_outliers, fv_outliers,
+         pch = 16, cex = 0.8, col = outlier_colors,
+         main = paste("OUTLIERS ONLY: Scaling Factor vs Final Value (", end_year, ")", sep = ""),
+         xlab = paste("Scaling Factor (", end_year, "/", base_year, ")", sep = ""),
+         ylab = paste("Final Scaled Value (kg/ha, ", end_year, ")", sep = ""))
+
+    abline(v = 1, col = "gray50", lwd = 2, lty = 2)
+
+    cor_outliers <- cor(sf_outliers, fv_outliers, use = "complete.obs")
+
+    legend("topright",
+           legend = c(
+             paste("n =", format(length(sf_outliers), big.mark = ",")),
+             paste("Correlation:", sprintf("%.3f", cor_outliers)),
+             "",
+             "Base rate (2000) quartiles:",
+             paste("Q1:", sprintf("%.0f", base_quartiles[1])),
+             paste("Q2:", sprintf("%.0f", base_quartiles[2])),
+             paste("Q3:", sprintf("%.0f", base_quartiles[3]))
+           ),
+           col = c(NA, NA, NA, NA,
+                   rgb(1, 0.8, 0, 0.6), rgb(1, 0.5, 0, 0.6),
+                   rgb(1, 0.2, 0, 0.6)),
+           pch = c(NA, NA, NA, NA, 16, 16, 16),
+           cex = 0.7, bty = "n")
+
+    cat(sprintf("\n=== Outlier Detail Analysis ===\n"))
+    cat(sprintf("Correlation (SF vs final value) for outliers: %.3f\n", cor_outliers))
+    cat(sprintf("Base rate range for outliers: %.0f - %.0f kg/ha\n",
+                min(base_outliers, na.rm = TRUE),
+                max(base_outliers, na.rm = TRUE)))
+
+  } else if (length(sf_valid) > 100) {
+    plot.new()
+    text(0.5, 0.5, "No outliers to display")
+  }
+}
