@@ -576,50 +576,6 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   # Find nearest valid cells for markers (will be used in time series plot)
   sample_cells_for_ts <- list()
   
-  # Helper function for plotting maps
-  plot_map <- function(lon, lat, data, title, diverging = FALSE, add_markers = TRUE) {
-    # Flip lat for plotting (north up)
-    data_plot <- data[, c(length(lat):1)]
-    
-    # Calculate data range excluding NA and extreme values
-    valid_data <- data_plot[is.finite(data_plot) & abs(data_plot) < 1e+10]
-    if (length(valid_data) > 0) {
-      zlim <- range(valid_data, na.rm = TRUE)
-      
-      # For diverging maps (e.g., difference maps), center at zero
-      if (diverging) {
-        max_abs <- max(abs(zlim), na.rm = TRUE)
-        zlim <- c(-max_abs, max_abs)
-      }
-    } else {
-      zlim <- c(0, 1)
-    }
-    
-    # Choose color scheme
-    if (diverging) {
-      # Diverging: blue (negative) -> white (zero) -> red (positive)
-      col_ramp <- colorRampPalette(c("#2166ac", "#4393c3", "#92c5de", "#d1e5f0", 
-                                      "#f7f7f7", 
-                                      "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
-    } else {
-      # Sequential: blue (low) -> cyan -> yellow -> red (high)
-      col_ramp <- colorRampPalette(c("#2166ac", "#67a9cf", "#d1e5f0", "#fefebe", 
-                                      "#fddbc7", "#ef8a62", "#b2182b"))(100)
-    }
-    
-    image.plot(lon, lat, data_plot,
-               main = title,
-               xlab = "Longitude", ylab = "Latitude",
-               col = col_ramp,
-               zlim = zlim,
-               ylim = c(-65, 90))
-    
-    # Add sample location markers if requested
-    if (add_markers) {
-      add_sample_markers(lon, lat, sample_locations)
-    }
-  }
-  
   # AGGREGATION COMPARISON: Show 5-minute vs 0.5-degree if data provided
   if (!is.null(spatial_data_5min) && !is.null(lon_5min) && !is.null(lat_5min)) {
     # Create a separate page for aggregation comparison
@@ -696,29 +652,33 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   }
   
   plot_map(lon, lat, base_rate,
-          paste(crop, "- Original Pattern (Year 2000) [Method:", method, "]"))
-  
+          paste(crop, "- Original Pattern (Year 2000) [Method:", method, "]"),
+          sample_locations = sample_locations)
+
   # Plot 2: First year
   plot_map(lon, lat, scaled_data[, , 1],
-          paste(crop, "- Scaled Pattern (Year", start_year, ")"))
-  
+          paste(crop, "- Scaled Pattern (Year", start_year, ")"),
+          sample_locations = sample_locations)
+
   # Plot 3: Middle year
   mid_year <- start_year + mid_idx - 1
   plot_map(lon, lat, scaled_data[, , mid_idx],
-          paste(crop, "- Scaled Pattern (Year", mid_year, ")"))
-  
+          paste(crop, "- Scaled Pattern (Year", mid_year, ")"),
+          sample_locations = sample_locations)
+
   # Plot 4: Last year
   plot_map(lon, lat, scaled_data[, , ntime],
-          paste(crop, "- Scaled Pattern (Year", end_year, ")"))
-  
+          paste(crop, "- Scaled Pattern (Year", end_year, ")"),
+          sample_locations = sample_locations)
+
   # Plot 5: Difference (last - first year)
   first_year_data <- scaled_data[, , 1]
   last_year_data <- scaled_data[, , ntime]
   diff_map <- last_year_data - first_year_data
-  
+
   plot_map(lon, lat, diff_map,
            paste(crop, "- Change (", end_year, "-", start_year, ")"),
-           diverging = TRUE)
+           diverging = TRUE, sample_locations = sample_locations)
 
   # Plot 6: Base year scatter (scaled vs original)
   if (base_idx >= 1 && base_idx <= ntime) {
