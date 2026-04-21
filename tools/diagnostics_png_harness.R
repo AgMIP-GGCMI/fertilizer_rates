@@ -21,12 +21,17 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
   scaling_args <- c(crop, scenario, iam, gcm)
 
   # The shadows must live in globalenv() because `source()` evaluates
-  # fertilizer_scaling.R in globalenv, and plot_diagnostics's
+  # fertilizer_scaling.R in globalenv by default, and plot_diagnostics's
   # unqualified `pdf(...)` call is looked up via its definition
   # environment (also globalenv). A `local({...})` wrapper is invisible
   # to both lookups. The shadows are closures over png_output_dir and
-  # scaling_args; the assignment location does not affect scope
-  # resolution.
+  # scaling_args; the assignment into globalenv is load-bearing, but the
+  # closures themselves capture from the function's own frame.
+  #
+  # This function is NOT reentrant. Do not call it recursively or from
+  # parallel tests in the same R session — the on.exit cleanup rm()s
+  # the globalenv shadows, which would remove an outer call's shadows
+  # partway through its source() evaluation.
   on.exit({
     if (exists("commandArgs", envir = globalenv(), inherits = FALSE)) {
       rm("commandArgs", envir = globalenv())
@@ -54,5 +59,8 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
     },
     envir = globalenv())
 
+  # Requires cwd == project root (fertilizer_scaling.R is sourced by
+  # relative path, and it in turn sources fertilizer_scaling_functions.R
+  # the same way).
   source("fertilizer_scaling.R")
 }
