@@ -103,3 +103,78 @@ plot_map <- function(lon, lat, data, title, diverging = FALSE,
     add_sample_markers(lon, lat, sample_locations)
   }
 }
+
+# ----------------------------------------------------------------------------
+# plot_aggregation_comparison
+# ----------------------------------------------------------------------------
+# Renders a 4-panel aggregation-comparison page: original 5-arcmin data,
+# aggregated 0.5-degree data, and their respective distribution histograms.
+# Sets par(mfrow = c(2, 2)) on entry and resets to par(mfrow = c(4, 3),
+# mar = c(4, 4, 3, 6)) on exit — caller relies on this reset.
+# ----------------------------------------------------------------------------
+plot_aggregation_comparison <- function(base_rate, spatial_data_5min, lon, lat,
+                                        lon_5min, lat_5min, crop) {
+  par(mfrow = c(2, 2), mar = c(4, 4, 3, 6))
+
+  valid_5min <- spatial_data_5min[is.finite(spatial_data_5min) & abs(spatial_data_5min) < 1e+10]
+  if (length(valid_5min) > 0) {
+    zlim_5min <- quantile(valid_5min, c(0.02, 0.98), na.rm = TRUE)
+  } else {
+    zlim_5min <- c(0, 1)
+  }
+
+  col_ramp <- colorRampPalette(c("#2166ac", "#67a9cf", "#d1e5f0", "#fefebe",
+                                  "#fddbc7", "#ef8a62", "#b2182b"))(100)
+
+  lat_5min_plot <- rev(lat_5min)
+  data_5min_plot <- spatial_data_5min[, ncol(spatial_data_5min):1]
+  image.plot(lon_5min, lat_5min_plot, data_5min_plot,
+             main = paste(crop, "- Original 5-arcmin Data (full resolution)"),
+             xlab = "Longitude", ylab = "Latitude",
+             col = col_ramp,
+             zlim = zlim_5min,
+             ylim = c(-65, 90))
+
+  data_halfdeg_plot <- base_rate[, c(length(lat):1)]
+  valid_halfdeg <- data_halfdeg_plot[is.finite(data_halfdeg_plot) & abs(data_halfdeg_plot) < 1e+10]
+  if (length(valid_halfdeg) > 0) {
+    zlim_halfdeg <- quantile(valid_halfdeg, c(0.02, 0.98), na.rm = TRUE)
+  } else {
+    zlim_halfdeg <- c(0, 1)
+  }
+
+  image.plot(lon, lat, data_halfdeg_plot,
+             main = paste(crop, "- Aggregated 0.5-degree Data"),
+             xlab = "Longitude", ylab = "Latitude",
+             col = col_ramp,
+             zlim = zlim_halfdeg,
+             ylim = c(-65, 90))
+
+  if (length(valid_5min) > 0) {
+    hist(valid_5min, breaks = 50, main = "5-arcmin Data Distribution",
+         xlab = "N Rate (kg/ha)", col = "steelblue", border = "steelblue")
+    legend("topright",
+           legend = c(paste("N =", format(length(valid_5min), big.mark = ",")),
+                      paste("mean =", sprintf("%.2f", mean(valid_5min, na.rm = TRUE))),
+                      paste("median =", sprintf("%.2f", median(valid_5min, na.rm = TRUE))),
+                      paste("max =", sprintf("%.2f", max(valid_5min, na.rm = TRUE)))),
+           bty = "n", cex = 0.85)
+  } else {
+    plot.new(); text(0.5, 0.5, "No valid 5-arcmin data")
+  }
+
+  if (length(valid_halfdeg) > 0) {
+    hist(valid_halfdeg, breaks = 50, main = "0.5-degree Aggregated Data Distribution",
+         xlab = "N Rate (kg/ha)", col = "coral", border = "coral")
+    legend("topright",
+           legend = c(paste("N =", format(length(valid_halfdeg), big.mark = ",")),
+                      paste("mean =", sprintf("%.2f", mean(valid_halfdeg, na.rm = TRUE))),
+                      paste("median =", sprintf("%.2f", median(valid_halfdeg, na.rm = TRUE))),
+                      paste("max =", sprintf("%.2f", max(valid_halfdeg, na.rm = TRUE)))),
+           bty = "n", cex = 0.85)
+  } else {
+    plot.new(); text(0.5, 0.5, "No valid 0.5-degree data")
+  }
+
+  par(mfrow = c(4, 3), mar = c(4, 4, 3, 6))
+}
