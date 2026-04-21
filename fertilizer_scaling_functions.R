@@ -564,8 +564,6 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   ntime <- dim(scaled_data)[3]
   mid_idx <- ntime %/% 2
   base_idx <- base_year - start_year + 1
-  valid_rel_count <- 0
-  
 
   # Set up layout for multiple plots (4 rows x 3 columns)
   par(mfrow = c(4, 3), mar = c(4, 4, 3, 6))
@@ -587,29 +585,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
   plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop)
 
-  # Plot 7: Relative change distribution (last / base year)
-  if (base_idx >= 1 && base_idx <= ntime) {
-    scaled_base <- scaled_data[, , base_idx]
-    scaled_last <- scaled_data[, , ntime]
-    valid_rel <- is.finite(scaled_base) & is.finite(scaled_last) & scaled_base > 0
-    if (any(valid_rel)) {
-      rel_change <- scaled_last[valid_rel] / scaled_base[valid_rel]
-      valid_rel_count <- length(rel_change)
-      hist(rel_change, breaks = 40, main = paste(crop, "- Rel. Change", end_year, "vs", base_year),
-           xlab = "Relative change (last/base)", col = "grey")
-      stats <- quantile(rel_change, probs = c(0.05, 0.5, 0.95))
-      abline(v = 1, col = "red", lwd = 2, lty = 2)
-      legend("topright",
-             legend = c(sprintf("N = %d", length(rel_change)),
-                        sprintf("mean = %.2f", mean(rel_change)),
-                        sprintf("p05/50/95 = %.2f / %.2f / %.2f", stats[1], stats[2], stats[3])),
-             bty = "n")
-    } else {
-      plot.new(); text(0.5, 0.5, "No valid relative changes")
-    }
-  } else {
-    plot.new(); text(0.5, 0.5, "Base year outside range")
-  }
+  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, base_year, end_year, crop)
 
   # Plot 8: Extreme values diagnostic - Ratio of spatial base to TS base
   if (base_idx >= 1 && base_idx <= ntime) {
