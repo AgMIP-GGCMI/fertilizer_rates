@@ -253,3 +253,38 @@ plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, 
     plot.new(); text(0.5, 0.5, "Base year outside range")
   }
 }
+
+# ----------------------------------------------------------------------------
+# plot_relative_change_hist
+# ----------------------------------------------------------------------------
+# Renders a histogram of per-cell relative change (last year / base year),
+# with quantile legend. Returns the count of valid relative-change cells
+# (preserved from the original code where it was assigned but unused).
+# ----------------------------------------------------------------------------
+plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year, crop) {
+  ntime <- dim(scaled_data)[3]
+  valid_rel_count <- 0
+  if (base_idx >= 1 && base_idx <= ntime) {
+    scaled_base <- scaled_data[, , base_idx]
+    scaled_last <- scaled_data[, , ntime]
+    valid_rel <- is.finite(scaled_base) & is.finite(scaled_last) & scaled_base > 0
+    if (any(valid_rel)) {
+      rel_change <- scaled_last[valid_rel] / scaled_base[valid_rel]
+      valid_rel_count <- length(rel_change)
+      hist(rel_change, breaks = 40, main = paste(crop, "- Rel. Change", end_year, "vs", base_year),
+           xlab = "Relative change (last/base)", col = "grey")
+      stats <- quantile(rel_change, probs = c(0.05, 0.5, 0.95))
+      abline(v = 1, col = "red", lwd = 2, lty = 2)
+      legend("topright",
+             legend = c(sprintf("N = %d", length(rel_change)),
+                        sprintf("mean = %.2f", mean(rel_change)),
+                        sprintf("p05/50/95 = %.2f / %.2f / %.2f", stats[1], stats[2], stats[3])),
+             bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid relative changes")
+    }
+  } else {
+    plot.new(); text(0.5, 0.5, "Base year outside range")
+  }
+  invisible(valid_rel_count)
+}
