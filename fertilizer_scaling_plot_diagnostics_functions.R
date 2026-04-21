@@ -288,3 +288,65 @@ plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year
   }
   invisible(valid_rel_count)
 }
+
+# ----------------------------------------------------------------------------
+# plot_spatial_ts_ratio
+# ----------------------------------------------------------------------------
+# Renders a ratio map of spatial-base vs timeseries-base at the base year,
+# with ratios capped to [0.2, 5] for visualization. Prints a console
+# diagnostic line reporting cells that differ by more than 50%.
+#
+# The sample_locations arg matches the signature convention used by other
+# map-producing section functions (parity with plot_pattern_maps, etc.).
+# It is accepted but not overlaid on this particular map — the current
+# code does not draw markers on the ratio map, and preserving output
+# byte-for-byte means not adding any.
+# ----------------------------------------------------------------------------
+plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
+                                  sample_locations, crop) {
+  ntime <- dim(timeseries)[3]
+  if (base_idx >= 1 && base_idx <= ntime) {
+    ts_base <- timeseries[, , base_idx]
+
+    valid_ratio <- is.finite(base_rate) & is.finite(ts_base) & base_rate > 0.1 & ts_base > 0.1
+
+    if (any(valid_ratio)) {
+      ratio_map <- array(NA, dim = dim(base_rate))
+      ratio_map[valid_ratio] <- base_rate[valid_ratio] / ts_base[valid_ratio]
+
+      ratio_capped <- ratio_map
+      ratio_capped[ratio_capped > 5] <- 5
+      ratio_capped[ratio_capped < 0.2] <- 0.2
+
+      data_plot <- ratio_capped[, c(length(lat):1)]
+      valid_data <- data_plot[is.finite(data_plot)]
+
+      if (length(valid_data) > 0) {
+        zlim <- c(0.2, 5)
+
+        col_ramp <- colorRampPalette(c("#2166ac", "#4393c3", "#92c5de", "#d1e5f0",
+                                        "#f7f7f7",
+                                        "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
+
+        image.plot(lon, lat, data_plot,
+                   main = paste(crop, "- Spatial/TS Ratio (Year 2000)"),
+                   xlab = "Longitude", ylab = "Latitude",
+                   col = col_ramp,
+                   zlim = zlim,
+                   ylim = c(-65, 90))
+
+        n_mismatch <- sum(abs(ratio_map - 1) > 0.5, na.rm = TRUE)
+        n_total <- sum(valid_ratio)
+        pct_mismatch <- 100 * n_mismatch / n_total
+        print(paste("Base/TS mismatch: ", n_mismatch, " cells (",
+                    round(pct_mismatch, 1), "%) differ by >50%", sep = ""))
+      } else {
+        plot.new(); text(0.5, 0.5, "No valid ratio data")
+      }
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid ratio data")
+    }
+  } else {
+    plot.new(); text(0.5, 0.5, "Base year outside range")
+  }
+}
