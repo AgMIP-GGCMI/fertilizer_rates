@@ -54,15 +54,15 @@ where `<phase>` is `baseline` before any extraction and `current` after each ext
 - [ ] **Step 1: Create worktree and branch**
 
 ```bash
-git -C /workspace worktree add /home/node/worktrees/plot-diagnostics-refactor -b refactor/plot-diagnostics main
+git -C /workspace worktree add /workspace/.worktrees/plot-diagnostics-refactor -b refactor/plot-diagnostics main
 ```
 
-Expected: `Preparing worktree ... Branch 'refactor/plot-diagnostics' set up to track 'main'`. The directory `/home/node/worktrees/plot-diagnostics-refactor` is created. (It lives outside `/workspace` because the read-only parent of `/workspace` prevents creating sibling directories.)
+Expected: `Preparing worktree ... Branch 'refactor/plot-diagnostics' set up to track 'main'`. The directory `/workspace/.worktrees/plot-diagnostics-refactor` is created. (`/workspace/.worktrees/` is already in `.gitignore`, so the worktree is transparent to git. Using this path rather than a sibling of `/workspace/` because the devcontainer's `/workspace/..` is read-only.)
 
 - [ ] **Step 2: Switch to the worktree and confirm state**
 
 ```bash
-cd /home/node/worktrees/plot-diagnostics-refactor && git status && git log --oneline -3
+cd /workspace/.worktrees/plot-diagnostics-refactor && git status && git log --oneline -3
 ```
 
 Expected: clean working tree; HEAD at the latest main commit (the spec commit).
@@ -75,7 +75,7 @@ Expected: clean working tree; HEAD at the latest main commit (the spec commit).
 
 The `.Renviron` is gitignored; the worktree needs its own copy so path overrides work. If there's no `.Renviron` on main, the worktree uses defaults.
 
-All subsequent tasks run inside `/home/node/worktrees/plot-diagnostics-refactor`.
+All subsequent tasks run inside `/workspace/.worktrees/plot-diagnostics-refactor`.
 
 ---
 
@@ -1588,7 +1588,7 @@ Expected: the feature-branch commits appear as a diverged branch merged back int
 - [ ] **Step 4: Remove the worktree and delete the merged branch**
 
 ```bash
-git worktree remove /home/node/worktrees/plot-diagnostics-refactor
+git worktree remove /workspace/.worktrees/plot-diagnostics-refactor
 git branch -d refactor/plot-diagnostics
 ```
 
