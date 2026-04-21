@@ -54,15 +54,15 @@ where `<phase>` is `baseline` before any extraction and `current` after each ext
 - [ ] **Step 1: Create worktree and branch**
 
 ```bash
-git -C /workspace worktree add /home/node/worktrees/plot-diagnostics-refactor -b refactor/plot-diagnostics main
+git -C /workspace worktree add /workspace/.worktrees/plot-diagnostics-refactor -b refactor/plot-diagnostics main
 ```
 
-Expected: `Preparing worktree ... Branch 'refactor/plot-diagnostics' set up to track 'main'`. The directory `/home/node/worktrees/plot-diagnostics-refactor` is created. (It lives outside `/workspace` because the read-only parent of `/workspace` prevents creating sibling directories.)
+Expected: `Preparing worktree ... Branch 'refactor/plot-diagnostics' set up to track 'main'`. The directory `/workspace/.worktrees/plot-diagnostics-refactor` is created. (`/workspace/.worktrees/` is already in `.gitignore`, so the worktree is transparent to git. Using this path rather than a sibling of `/workspace/` because the devcontainer's `/workspace/..` is read-only.)
 
 - [ ] **Step 2: Switch to the worktree and confirm state**
 
 ```bash
-cd /home/node/worktrees/plot-diagnostics-refactor && git status && git log --oneline -3
+cd /workspace/.worktrees/plot-diagnostics-refactor && git status && git log --oneline -3
 ```
 
 Expected: clean working tree; HEAD at the latest main commit (the spec commit).
@@ -75,7 +75,7 @@ Expected: clean working tree; HEAD at the latest main commit (the spec commit).
 
 The `.Renviron` is gitignored; the worktree needs its own copy so path overrides work. If there's no `.Renviron` on main, the worktree uses defaults.
 
-All subsequent tasks run inside `/home/node/worktrees/plot-diagnostics-refactor`.
+All subsequent tasks run inside `/workspace/.worktrees/plot-diagnostics-refactor`.
 
 ---
 
@@ -269,6 +269,19 @@ rm -rf data/plot-refactor-current
 Rscript tools/render_diagnostics_png.R data/plot-refactor-current/histsoc mai histsoc
 Rscript tools/render_diagnostics_png.R data/plot-refactor-current/ssp126  mai ssp126 image gfdl-esm4
 (cd data/plot-refactor-current && find . -name '*.png' -print0 | sort -z | xargs -0 md5sum) > data/plot-refactor-current/manifest.md5
+
+# 1a. Count guard: both manifests must be non-empty and equal in line count.
+#     Without this, two empty manifests (e.g., if the data/inputs symlink
+#     disappears and main() silently no-ops) would compare as "identical."
+BASELINE_N=$(wc -l < data/plot-refactor-baseline/manifest.md5)
+CURRENT_N=$(wc -l < data/plot-refactor-current/manifest.md5)
+if [ "$BASELINE_N" -eq 0 ] || [ "$CURRENT_N" -eq 0 ]; then
+  echo "PNG MANIFEST EMPTY — verification invalid (check data/inputs symlink and .Renviron)"
+  exit 1
+fi
+echo "Manifest line counts: baseline=$BASELINE_N current=$CURRENT_N"
+
+# 1b. Content diff.
 diff data/plot-refactor-baseline/manifest.md5 data/plot-refactor-current/manifest.md5 && echo "PNG MANIFEST MATCH" || echo "PNG MANIFEST MISMATCH"
 
 # 2. Test suite
@@ -276,10 +289,18 @@ Rscript tests/testthat.R 2>&1 | tail -20
 ```
 
 **Gate:** The reviewer does not approve the extraction commit until all of the following hold:
-1. The `diff` is empty (`PNG MANIFEST MATCH` line prints).
-2. `Rscript tests/testthat.R` reports the same pass/fail counts as Task 5's baseline.
+1. Neither manifest is empty (`PNG MANIFEST EMPTY` must not print).
+2. Baseline and current line counts match (printed by the "Manifest line counts" line — should be equal).
+3. The `diff` is empty (`PNG MANIFEST MATCH` line prints).
+4. `Rscript tests/testthat.R` reports the same pass/fail counts as Task 5's baseline.
 
-If either check fails, the writer fixes or reverts the extraction before proceeding — no exceptions.
+If any check fails, the writer fixes or reverts the extraction before proceeding — no exceptions.
+
+### Worktree prerequisites (persist across all tasks)
+
+- `.Renviron` must exist in the worktree root (copied from main in Task 1).
+- `data/inputs` must be a symlink (or directory) resolving to the actual input-data root. In this devcontainer, that means `data/inputs -> /workspace/data/inputs`. Without it, `main()` silently "completes" with "Input file does not exist" messages and exit 0 — which looks like success but produces no PNGs.
+- The symlink lives under gitignored `data/` so it isn't committed; once created at worktree setup it persists across tasks.
 
 ---
 
@@ -1567,7 +1588,7 @@ Expected: the feature-branch commits appear as a diverged branch merged back int
 - [ ] **Step 4: Remove the worktree and delete the merged branch**
 
 ```bash
-git worktree remove /home/node/worktrees/plot-diagnostics-refactor
+git worktree remove /workspace/.worktrees/plot-diagnostics-refactor
 git branch -d refactor/plot-diagnostics
 ```
 
