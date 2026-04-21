@@ -576,26 +576,6 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   # Find nearest valid cells for markers (will be used in time series plot)
   sample_cells_for_ts <- list()
   
-  # Helper function to add sample location markers to maps
-  add_sample_markers <- function() {
-    for (k in 1:nrow(sample_locations)) {
-      target_lon <- sample_locations$lon[k]
-      target_lat <- sample_locations$lat[k]
-      
-      # Find nearest grid cell
-      i <- which.min(abs(lon - target_lon))
-      j <- which.min(abs(lat - target_lat))
-      marker_lon <- lon[i]
-      marker_lat <- lat[j]
-      
-      # Add circle marker
-      points(marker_lon, marker_lat, pch = 21, col = "black", bg = NA, 
-             cex = 1.5, lwd = 0.8)
-      # Add number label
-      text(marker_lon, marker_lat, k, cex = 0.5, col = "black", font = 2)
-    }
-  }
-  
   # Helper function for plotting maps
   plot_map <- function(lon, lat, data, title, diverging = FALSE, add_markers = TRUE) {
     # Flip lat for plotting (north up)
@@ -636,7 +616,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
     
     # Add sample location markers if requested
     if (add_markers) {
-      add_sample_markers()
+      add_sample_markers(lon, lat, sample_locations)
     }
   }
   

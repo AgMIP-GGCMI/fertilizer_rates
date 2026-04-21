@@ -24,3 +24,30 @@ build_sample_locations <- function() {
     stringsAsFactors = FALSE
   )
 }
+
+# ----------------------------------------------------------------------------
+# add_sample_markers
+# ----------------------------------------------------------------------------
+# Overlays numbered circle markers at each sample location on the currently
+# active map. Caller is responsible for calling this only when a map is
+# currently plotted.
+#
+# Args:
+#   lon, lat: Grid-cell coordinate vectors for the map being overlaid.
+#   sample_locations: Data frame from build_sample_locations().
+# ----------------------------------------------------------------------------
+add_sample_markers <- function(lon, lat, sample_locations) {
+  for (k in 1:nrow(sample_locations)) {
+    target_lon <- sample_locations$lon[k]
+    target_lat <- sample_locations$lat[k]
+
+    i <- which.min(abs(lon - target_lon))
+    j <- which.min(abs(lat - target_lat))
+    marker_lon <- lon[i]
+    marker_lat <- lat[j]
+
+    points(marker_lon, marker_lat, pch = 21, col = "black", bg = NA,
+           cex = 1.5, lwd = 0.8)
+    text(marker_lon, marker_lat, k, cex = 0.5, col = "black", font = 2)
+  }
+}
