@@ -105,11 +105,28 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
 
   scaling_args <- c(crop, scenario, iam, gcm)
 
-  local({
-    commandArgs <- function(trailingOnly = FALSE) {
-      if (trailingOnly) scaling_args else c("Rscript", "fertilizer_scaling.R", scaling_args)
+  # The shadows must live in globalenv() because `source()` (with
+  # default local = FALSE) evaluates fertilizer_scaling.R in globalenv,
+  # and plot_diagnostics's unqualified `pdf(...)` call is looked up via
+  # its definition environment (also globalenv). A `local({...})`
+  # wrapper is invisible to both lookups.
+  on.exit({
+    if (exists("commandArgs", envir = globalenv(), inherits = FALSE)) {
+      rm("commandArgs", envir = globalenv())
     }
-    pdf <- function(file, width = 7, height = 7, ...) {
+    if (exists("pdf", envir = globalenv(), inherits = FALSE)) {
+      rm("pdf", envir = globalenv())
+    }
+  }, add = TRUE)
+
+  assign("commandArgs",
+    function(trailingOnly = FALSE) {
+      if (trailingOnly) scaling_args else c("Rscript", "fertilizer_scaling.R", scaling_args)
+    },
+    envir = globalenv())
+
+  assign("pdf",
+    function(file, width = 7, height = 7, ...) {
       base <- sub("\\.pdf$", "", basename(file))
       pattern <- file.path(png_output_dir, paste0(base, "-%03d.png"))
       grDevices::png(filename = pattern,
@@ -117,27 +134,31 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
                      height = round(height * .HARNESS_PNG_DPI),
                      type = "cairo",
                      res = .HARNESS_PNG_DPI)
-    }
-    source("fertilizer_scaling.R", local = FALSE)
-  })
+    },
+    envir = globalenv())
+
+  source("fertilizer_scaling.R")
 }
 ```
 
 Notes on behavior preservation:
 
-- The `local()` wrapper isolates the `commandArgs` and `pdf` shadow
-  bindings so they don't leak into the caller's global environment.
-  The current harness defines them at top-level; wrapping in `local()`
-  is a small behavior change *for the harness* (not for
-  `plot_diagnostics`) — the renders themselves remain byte-identical
-  because R's lexical scoping still routes `plot_diagnostics`'s
-  `pdf(...)` call through the shadow during the `source()` call.
-- The eventual `source("fertilizer_scaling.R", local = FALSE)` loads
-  and runs `main(...)` exactly as the current harness does.
-- If byte-identity verification against the existing 18-file baseline
-  fails after the `local()` restructuring, the fallback is to keep
-  `pdf` and `commandArgs` assigned at globalenv level (matching today)
-  via `assign(..., envir = globalenv())` inside the function.
+- The shadow functions are assigned directly into `globalenv()`. The
+  original harness defined them at script top-level, which *is*
+  globalenv when run via `Rscript`; this preserves that behavior
+  exactly.
+- `on.exit()` removes the shadows when the function returns, so the
+  caller's global environment is not mutated across the call. The
+  `rm(...)` calls are guarded with `exists(..., inherits = FALSE)`
+  checks so a failure before the `assign()` calls doesn't trigger
+  spurious errors on exit.
+- The shadow functions are *closures*: they capture `png_output_dir`
+  and `scaling_args` from `render_diagnostics_to_png`'s frame. The
+  assignment location (globalenv) does not affect scope resolution —
+  closures close over their definition environment, not their
+  assignment environment.
+- `source("fertilizer_scaling.R")` runs the script in globalenv, where
+  both `commandArgs` and `pdf` resolve to our shadows.
 
 **`tools/render_diagnostics_png.R`** (simplified CLI wrapper):
 

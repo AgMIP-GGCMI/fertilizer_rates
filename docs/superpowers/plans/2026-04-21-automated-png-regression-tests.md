@@ -100,14 +100,30 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
 
   scaling_args <- c(crop, scenario, iam, gcm)
 
-  # Shadow commandArgs and pdf in a local env, then source
-  # fertilizer_scaling.R into that env so plot_diagnostics's pdf()
-  # lookup resolves to the png-writing shadow via R's lexical scoping.
-  local({
-    commandArgs <- function(trailingOnly = FALSE) {
-      if (trailingOnly) scaling_args else c("Rscript", "fertilizer_scaling.R", scaling_args)
+  # The shadows must live in globalenv() because `source()` evaluates
+  # fertilizer_scaling.R in globalenv, and plot_diagnostics's
+  # unqualified `pdf(...)` call is looked up via its definition
+  # environment (also globalenv). A `local({...})` wrapper is invisible
+  # to both lookups. The shadows are closures over png_output_dir and
+  # scaling_args; the assignment location does not affect scope
+  # resolution.
+  on.exit({
+    if (exists("commandArgs", envir = globalenv(), inherits = FALSE)) {
+      rm("commandArgs", envir = globalenv())
     }
-    pdf <- function(file, width = 7, height = 7, ...) {
+    if (exists("pdf", envir = globalenv(), inherits = FALSE)) {
+      rm("pdf", envir = globalenv())
+    }
+  }, add = TRUE)
+
+  assign("commandArgs",
+    function(trailingOnly = FALSE) {
+      if (trailingOnly) scaling_args else c("Rscript", "fertilizer_scaling.R", scaling_args)
+    },
+    envir = globalenv())
+
+  assign("pdf",
+    function(file, width = 7, height = 7, ...) {
       base <- sub("\\.pdf$", "", basename(file))
       pattern <- file.path(png_output_dir, paste0(base, "-%03d.png"))
       grDevices::png(filename = pattern,
@@ -115,9 +131,10 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
                      height = round(height * .HARNESS_PNG_DPI),
                      type = "cairo",
                      res = .HARNESS_PNG_DPI)
-    }
-    source("fertilizer_scaling.R", local = FALSE)
-  })
+    },
+    envir = globalenv())
+
+  source("fertilizer_scaling.R")
 }
 ```
 
