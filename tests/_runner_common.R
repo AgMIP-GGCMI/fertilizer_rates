@@ -4,8 +4,12 @@
 library(testthat)
 
 run_tests <- function(fast_only = FALSE) {
-  tests_dir <- dirname(normalizePath(sub("^--file=", "",
-    grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)[1])))
+  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  tests_dir <- if (length(file_arg) == 1) {
+    dirname(normalizePath(sub("^--file=", "", file_arg)))
+  } else {
+    getwd()  # Interactive source() fallback.
+  }
   testthat::test_dir(file.path(tests_dir, "testthat"))
   slow_dir <- file.path(tests_dir, "testthat-slow")
   if (!fast_only && dir.exists(slow_dir)) {
