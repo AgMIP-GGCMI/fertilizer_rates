@@ -7,7 +7,8 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG NODE_MAJOR=20
 
 # System tooling (Anthropic's reference set) + system libs for R packages
-# used by this repo (ncdf4, fields, lintr).
+# used by this repo (ncdf4, fields, lintr, and cairo/png rendering for
+# PNG regression tests).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     less \
     git \
@@ -35,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libssl-dev \
     libcurl4-openssl-dev \
+    libcairo2 \
+    libpng16-16 \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js via NodeSource (rocker base has no Node).

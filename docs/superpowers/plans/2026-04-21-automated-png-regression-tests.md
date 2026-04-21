@@ -487,7 +487,11 @@ cd /workspace/.worktrees/png-regression-tests
 Rscript tests/testthat.R 2>&1 | tail -5
 ```
 
-Expected: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 196 ]` — the original 194 plus the 2 new `test_that` blocks. (Each `test_that` is one passing block regardless of how many `expect_snapshot_file` calls it contains.)
+Expected (two summary lines — one per `test_dir` call):
+- Fast: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+- Slow: `[ FAIL 0 | WARN 0 | SKIP 2 | PASS 32 ]`
+
+The slow suite adds 2 new `test_that` blocks (one per scenario); each `test_that` is one passing block regardless of how many `expect_snapshot_file` calls it contains. The 2 SKIPs are "empty test" entries from pipeline-internal `test_that()` blocks in `fertilizer_scaling_functions.R:492` (the lambda-method branch of "Trends are preserved" only calls `cat()`). They are harmless and pre-existing in the pipeline.
 
 - [ ] **Step 4.4: Commit the baselines**
 
@@ -520,7 +524,11 @@ cd /workspace/.worktrees/png-regression-tests
 Rscript tests/testthat.R 2>&1 | tail -5
 ```
 
-Expected: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 196 ]`. The snapshot test now compares against committed baselines; clean pass means the harness is deterministic across runs.
+Expected (two summary lines — one per `test_dir` call):
+- Fast: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+- Slow: `[ FAIL 0 | WARN 0 | SKIP 2 | PASS 32 ]`
+
+The snapshot test now compares against committed baselines; clean pass means the harness is deterministic across runs. The 2 SKIPs are pre-existing "empty test" entries from pipeline-internal `test_that()` blocks in `fertilizer_scaling_functions.R:492` (the lambda-method branch of "Trends are preserved" only calls `cat()`) — harmless, unrelated to the new PNG suite.
 
 ---
 
@@ -539,13 +547,18 @@ Write `/workspace/.worktrees/png-regression-tests/tools/accept_diagnostics_basel
 # accept_diagnostics_baseline.R
 # ============================================================================
 # Accept the current plot_diagnostics_regression PNG snapshots as the new
-# baseline. Run after intentionally changing diagnostic output. Expects
-# to be run from the repo root.
+# baseline. Run after intentionally changing diagnostic output. Can be
+# invoked from any working directory — the repo root is resolved from
+# the script's own path.
 # ============================================================================
 
-script_path <- sub("^--file=", "",
-  grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)[1])
-repo_root <- normalizePath(file.path(dirname(script_path), ".."))
+file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+repo_root <- if (length(file_arg) == 1) {
+  normalizePath(file.path(dirname(sub("^--file=", "", file_arg)), ".."))
+} else {
+  # Interactive source() fallback.
+  dirname(getwd())
+}
 setwd(file.path(repo_root, "tests"))
 
 library(testthat)
@@ -753,8 +766,12 @@ Rscript tests/testthat-fast.R 2>&1 | tail -5
 ```
 
 Expected:
-- Full: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 196 ]`
-- Fast: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+- Full (`tests/testthat.R` emits two summary lines — one per `test_dir` call):
+  - Fast: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+  - Slow: `[ FAIL 0 | WARN 0 | SKIP 2 | PASS 32 ]`
+- Fast-only (`tests/testthat-fast.R`): `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+
+The 2 SKIPs in the slow suite are pre-existing "empty test" entries from pipeline-internal `test_that()` blocks in `fertilizer_scaling_functions.R:492` (the lambda-method branch of "Trends are preserved" only calls `cat()`). They are harmless and unrelated to the new PNG regression suite.
 
 - [ ] **Step 8.2: Review branch commits**
 
@@ -824,7 +841,11 @@ cd /workspace
 Rscript tests/testthat.R 2>&1 | tail -5
 ```
 
-Expected: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 196 ]`. The merged code works on main from a fresh invocation.
+Expected (two summary lines — one per `test_dir` call):
+- Fast: `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 194 ]`
+- Slow: `[ FAIL 0 | WARN 0 | SKIP 2 | PASS 32 ]`
+
+The merged code works on main from a fresh invocation. The 2 SKIPs are pre-existing "empty test" entries from pipeline-internal `test_that()` blocks in `fertilizer_scaling_functions.R:492` — harmless and unrelated to the new PNG suite.
 
 ---
 
