@@ -44,6 +44,44 @@ Verify with `/plugin` — the Installed tab should list `superpowers@claude-plug
 
 Authentication and the installed plugin persist across restarts via the `claude-code-config-${devcontainerId}` volume; you don't need to re-authenticate on every rebuild.
 
+## Testing
+
+Run the full test suite (unit tests + PNG regression tests):
+
+    Rscript tests/testthat.R
+
+The PNG regression tests render diagnostic plots for two reference
+scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare
+them byte-for-byte against committed baseline PNGs. Each scenario
+takes ~30–40 seconds, so the full suite takes a few minutes.
+
+To skip the slow tests during rapid iteration:
+
+    Rscript tests/testthat-fast.R
+
+### When a PNG snapshot fails
+
+testthat writes the mismatched render to
+`tests/testthat-slow/_snaps/plot_diagnostics_regression/<name>.new.png`
+alongside the baseline. To review in R:
+
+    > testthat::snapshot_review("plot_diagnostics_regression")
+
+If the change is intentional, accept the new baseline:
+
+    Rscript tools/accept_diagnostics_baseline.R
+
+Then commit the updated snapshot files alongside the code change that
+produced them.
+
+### Environment caveat
+
+Byte-identical PNG output is guaranteed only inside this repo's
+devcontainer (`rocker/r-ver:4.5.0` base image + pinned apt cairo/png
+libs + `renv`-locked R packages). Runs outside the container may
+produce legitimate pixel differences and will need fresh baselines
+captured in the devcontainer environment.
+
 ## Running the R scripts
 
 ```bash
