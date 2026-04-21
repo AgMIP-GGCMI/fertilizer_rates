@@ -3,6 +3,11 @@
 # PNG. testthat compares byte-for-byte against committed baselines and
 # writes a .new.png next to any mismatch for review.
 
+# expect_snapshot_file() requires testthat edition 3. This project
+# is not an R package, so there's no DESCRIPTION to set
+# Config/testthat/edition; enable it per-file instead.
+testthat::local_edition(3)
+
 source(
   testthat::test_path("..", "..", "tools", "diagnostics_png_harness.R"),
   chdir = TRUE
