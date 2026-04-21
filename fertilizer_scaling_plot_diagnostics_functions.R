@@ -214,3 +214,42 @@ plot_pattern_maps <- function(base_rate, scaled_data, lon, lat, sample_locations
            paste(crop, "- Change (", end_year, "-", start_year, ")"),
            diverging = TRUE, sample_locations = sample_locations)
 }
+
+# ----------------------------------------------------------------------------
+# plot_base_year_scatter
+# ----------------------------------------------------------------------------
+# Renders a scatter plot of scaled vs original values at the base year,
+# with 1:1 reference line and correlation / RMSE / bias legend.
+# ----------------------------------------------------------------------------
+plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, crop) {
+  ntime <- dim(scaled_data)[3]
+  if (base_idx >= 1 && base_idx <= ntime) {
+    scaled_base <- scaled_data[, , base_idx]
+    valid <- is.finite(base_rate) & is.finite(scaled_base)
+    if (any(valid)) {
+      x <- base_rate[valid]
+      y <- scaled_base[valid]
+      plot(x, y, pch = 16, cex = 0.4,
+           xlab = "Original (Year 2000)", ylab = "Scaled (Year 2000)",
+           main = paste(crop, "- Scatter Year", base_year))
+      abline(0, 1, col = "red", lwd = 2)
+      if (length(x) > 1 && sd(x) > 0 && sd(y) > 0) {
+        cor_val <- cor(x, y)
+      } else {
+        cor_val <- NA_real_
+      }
+      rmse <- sqrt(mean((y - x)^2))
+      bias <- mean(y - x)
+      legend("topleft",
+             legend = c(paste("N =", length(x)),
+                        sprintf("cor = %.3f", cor_val),
+                        sprintf("RMSE = %.2f", rmse),
+                        sprintf("Bias = %.2f", bias)),
+             bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid data for base-year scatter")
+    }
+  } else {
+    plot.new(); text(0.5, 0.5, "Base year outside range")
+  }
+}
