@@ -582,34 +582,8 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                                 lon_5min, lat_5min, crop)
   }
   
-  plot_map(lon, lat, base_rate,
-          paste(crop, "- Original Pattern (Year 2000) [Method:", method, "]"),
-          sample_locations = sample_locations)
-
-  # Plot 2: First year
-  plot_map(lon, lat, scaled_data[, , 1],
-          paste(crop, "- Scaled Pattern (Year", start_year, ")"),
-          sample_locations = sample_locations)
-
-  # Plot 3: Middle year
-  mid_year <- start_year + mid_idx - 1
-  plot_map(lon, lat, scaled_data[, , mid_idx],
-          paste(crop, "- Scaled Pattern (Year", mid_year, ")"),
-          sample_locations = sample_locations)
-
-  # Plot 4: Last year
-  plot_map(lon, lat, scaled_data[, , ntime],
-          paste(crop, "- Scaled Pattern (Year", end_year, ")"),
-          sample_locations = sample_locations)
-
-  # Plot 5: Difference (last - first year)
-  first_year_data <- scaled_data[, , 1]
-  last_year_data <- scaled_data[, , ntime]
-  diff_map <- last_year_data - first_year_data
-
-  plot_map(lon, lat, diff_map,
-           paste(crop, "- Change (", end_year, "-", start_year, ")"),
-           diverging = TRUE, sample_locations = sample_locations)
+  plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
+                    start_year, end_year, mid_idx, crop, method)
 
   # Plot 6: Base year scatter (scaled vs original)
   if (base_idx >= 1 && base_idx <= ntime) {
