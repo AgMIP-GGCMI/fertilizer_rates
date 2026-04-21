@@ -585,37 +585,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
                     start_year, end_year, mid_idx, crop, method)
 
-  # Plot 6: Base year scatter (scaled vs original)
-  if (base_idx >= 1 && base_idx <= ntime) {
-    scaled_base <- scaled_data[, , base_idx]
-    valid <- is.finite(base_rate) & is.finite(scaled_base)
-    if (any(valid)) {
-      x <- base_rate[valid]
-      y <- scaled_base[valid]
-      plot(x, y, pch = 16, cex = 0.4,
-           xlab = "Original (Year 2000)", ylab = "Scaled (Year 2000)",
-           main = paste(crop, "- Scatter Year", base_year))
-      abline(0, 1, col = "red", lwd = 2)
-      # summary stats
-      if (length(x) > 1 && sd(x) > 0 && sd(y) > 0) {
-        cor_val <- cor(x, y)
-      } else {
-        cor_val <- NA_real_
-      }
-      rmse <- sqrt(mean((y - x)^2))
-      bias <- mean(y - x)
-      legend("topleft",
-             legend = c(paste("N =", length(x)),
-                        sprintf("cor = %.3f", cor_val),
-                        sprintf("RMSE = %.2f", rmse),
-                        sprintf("Bias = %.2f", bias)),
-             bty = "n")
-    } else {
-      plot.new(); text(0.5, 0.5, "No valid data for base-year scatter")
-    }
-  } else {
-    plot.new(); text(0.5, 0.5, "Base year outside range")
-  }
+  plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop)
 
   # Plot 7: Relative change distribution (last / base year)
   if (base_idx >= 1 && base_idx <= ntime) {
