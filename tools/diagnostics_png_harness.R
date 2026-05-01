@@ -7,9 +7,13 @@
 # and from the testthat regression test.
 #
 # The function shadows grDevices::pdf with a cairo-backed png() so each
-# diagnostic "page" becomes a byte-comparable PNG. Cairo + renv-pinned R +
-# pinned Debian cairo/png packages make output byte-identical inside the
-# devcontainer.
+# diagnostic "page" becomes a byte-comparable PNG, then invokes main()
+# directly. Callers must have already sourced fertilizer_scaling_settings.R
+# and fertilizer_scaling_functions.R into globalenv() (testthat setup.R and
+# render_diagnostics_png.R both do this).
+#
+# Cairo + renv-pinned R + pinned Debian cairo/png packages make output
+# byte-identical inside the devcontainer.
 # ============================================================================
 
 .HARNESS_PNG_DPI <- 100
@@ -18,34 +22,22 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
                                       iam = NULL, gcm = NULL) {
   dir.create(png_output_dir, showWarnings = FALSE, recursive = TRUE)
 
-  scaling_args <- c(crop, scenario, iam, gcm)
-
-  # The shadows must live in globalenv() because `source()` evaluates
-  # fertilizer_scaling.R in globalenv by default, and plot_diagnostics's
-  # unqualified `pdf(...)` call is looked up via its definition
-  # environment (also globalenv). A `local({...})` wrapper is invisible
-  # to both lookups. The shadows are closures over png_output_dir and
-  # scaling_args; the assignment into globalenv is load-bearing, but the
-  # closures themselves capture from the function's own frame.
+  # The pdf shadow must live in globalenv() because plot_diagnostics's
+  # unqualified `pdf(...)` call is looked up via its definition environment
+  # (globalenv, since fertilizer_scaling_functions.R is sourced there). A
+  # `local({...})` wrapper would be invisible to the lookup. The shadow is
+  # a closure over png_output_dir; the assignment into globalenv is
+  # load-bearing, but the closure itself captures from this function's frame.
   #
   # This function is NOT reentrant. Do not call it recursively or from
-  # parallel tests in the same R session — the on.exit cleanup rm()s
-  # the globalenv shadows, which would remove an outer call's shadows
-  # partway through its source() evaluation.
+  # parallel tests in the same R session — the on.exit cleanup rm()s the
+  # globalenv shadow, which would remove an outer call's shadow partway
+  # through its main() invocation.
   on.exit({
-    if (exists("commandArgs", envir = globalenv(), inherits = FALSE)) {
-      rm("commandArgs", envir = globalenv())
-    }
     if (exists("pdf", envir = globalenv(), inherits = FALSE)) {
       rm("pdf", envir = globalenv())
     }
   }, add = TRUE)
-
-  assign("commandArgs",
-    function(trailingOnly = FALSE) {
-      if (trailingOnly) scaling_args else c("Rscript", "fertilizer_scaling.R", scaling_args)
-    },
-    envir = globalenv())
 
   assign("pdf",
     function(file, width = 7, height = 7, ...) {
@@ -59,8 +51,5 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
     },
     envir = globalenv())
 
-  # Requires cwd == project root (fertilizer_scaling.R is sourced by
-  # relative path, and it in turn sources fertilizer_scaling_functions.R
-  # the same way).
-  source("fertilizer_scaling.R")
+  main(crop, scenario, iam = iam, gcm = gcm)
 }
