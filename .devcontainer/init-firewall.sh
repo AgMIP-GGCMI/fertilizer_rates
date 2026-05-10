@@ -78,9 +78,11 @@ for domain in \
     "cran.r-project.org"; do
     echo "Resolving $domain..."
     ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
+
+    # Don't fail if the domain can't be resolved; just assume it's no longer needed
     if [ -z "$ips" ]; then
-        echo "ERROR: Failed to resolve $domain"
-        exit 1
+        echo "WARNING: Skipping domain that failed to resolve: $domain"
+        continue
     fi
 
     while read -r ip; do
