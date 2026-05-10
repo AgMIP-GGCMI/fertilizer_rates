@@ -14,7 +14,10 @@ if (length(args) < 3) {
   stop("Usage: Rscript tools/render_diagnostics_png.R <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]")
 }
 
+source("fertilizer_scaling_settings.R")
+source("fertilizer_scaling_functions.R")
 source("tools/diagnostics_png_harness.R")
+
 render_diagnostics_to_png(
   png_output_dir = args[1],
   crop = args[2],
