@@ -1,4 +1,12 @@
 # ============================================================================
+# ARCHIVED — not sourced by any active script
+# ============================================================================
+# Vestigial cross-scenario script that duplicates much of
+# compare_relative_lambda's logic with its own drifted copy. Preserved
+# here for reference only.
+# ============================================================================
+
+# ============================================================================
 # Cross-Scenario Comparison: histsoc (2014) vs Future (2015)
 # ============================================================================
 #

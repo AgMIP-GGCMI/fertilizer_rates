@@ -69,9 +69,6 @@
 #   done
 # done
 
-# =============================================================================
-
-
 # Libraries, paths, crop mappings, scenario lists, base_year — see file.
 source("fertilizer_scaling_settings.R")
 
@@ -121,15 +118,14 @@ main(crop, scenario, iam, gcm)
 #   Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
 #
 # PRODUCTION MODE (all crops, all scenarios):
-#   1. For all 15 crops individually:
-#      for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#        Rscript fertilizer_scaling.R $crop
-#      done
+#   For all 15 crops individually:
+#     for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
+#       Rscript fertilizer_scaling.R $crop
+#     done
 #
 # OUTPUT:
 #   - Scaled NetCDF files: output_base_path/{relative,lambda}/{crop}_{scenario}.nc
 #   - Diagnostic plots: output_base_path/diagnostics/{crop}_{scenario}_*.pdf
-#   - Cross-scenario plots: output_base_path/cross_scenario/{crop}_{ssp}_{iam}_{gcm}_*.pdf
 #
 # COMMAND-LINE ARGUMENTS:
 #   arg1: crop name (required, e.g., mai)
