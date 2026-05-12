@@ -86,8 +86,6 @@ captured in the devcontainer environment.
 
 ```bash
 Rscript fertilizer_scaling.R
-Rscript compare_histsoc_future.R mai ssp585 image gfdl-esm4
-Rscript run_diagnostics_external.R
 ```
 
 R packages (`ncdf4`, `testthat`, `fields`, `abind`, `MASS`, `lintr`) are baked into the image and resolved via `RENV_CONFIG_EXTERNAL_LIBRARIES`, so the repo's `.Rprofile` (which activates renv) still finds them. `renv.lock` is the authoritative dependency manifest; to install a new package, run `install.packages("pkg")` inside the container and — if you want the lockfile to reflect it — then `renv::snapshot()` and commit `renv.lock`.
