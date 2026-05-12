@@ -71,13 +71,6 @@
 
 # =============================================================================
 
-# for comparing the 2014 vs. 2015 years after scaling for each scenario, run: 
-# for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#   Rscript compare_histsoc_future.R "$crop"
-# done
-
-# ============================================================================
-
 
 # Libraries, paths, crop mappings, scenario lists, base_year — see file.
 source("fertilizer_scaling_settings.R")
@@ -132,8 +125,6 @@ main(crop, scenario, iam, gcm)
 #      for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
 #        Rscript fertilizer_scaling.R $crop
 #      done
-#
-#   2. For cross-scenario (2014 vs 2015) comparisons, use compare_histsoc_future.R
 #
 # OUTPUT:
 #   - Scaled NetCDF files: output_base_path/{relative,lambda}/{crop}_{scenario}.nc
