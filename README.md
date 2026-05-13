@@ -82,6 +82,23 @@ libs + `renv`-locked R packages). Runs outside the container may
 produce legitimate pixel differences and will need fresh baselines
 captured in the devcontainer environment.
 
+### Coverage
+
+Generate a line-coverage report for `fertilizer_scaling_functions.R`:
+
+    Rscript tests/coverage.R
+
+The script instruments the source file with `covr` and runs both the
+fast and slow test suites against it. The slow PNG-regression tests
+are required to cover `main()`, `plot_diagnostics()`, and
+`compare_relative_lambda()` — they are exercised end-to-end rather
+than unit-tested — so the run takes a few minutes.
+
+Pass an optional threshold percentage to fail the run when coverage
+drops below it (intended for CI):
+
+    Rscript tests/coverage.R 90
+
 ## Running the R scripts
 
 ```bash
