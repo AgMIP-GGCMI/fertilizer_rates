@@ -67,6 +67,18 @@ print(cov)
 pct <- covr::percent_coverage(cov, by = "line")
 cat(sprintf("\nLine coverage (support files, fast tests): %.2f%%\n", pct))
 
+# Per-line HTML report, gitignored. Skipped when DT/htmltools aren't
+# available — those are covr::report()'s rendering deps but are not in
+# renv.lock. Install with `renv::install(c("DT", "htmltools"))` to
+# enable HTML output.
+if (requireNamespace("DT", quietly = TRUE) &&
+    requireNamespace("htmltools", quietly = TRUE)) {
+  covr::report(cov, file = "coverage_fast.html", browse = FALSE)
+  cat("HTML report: coverage_fast.html\n")
+} else {
+  cat("HTML report skipped: install DT and htmltools to enable.\n")
+}
+
 if (!is.na(threshold)) {
   if (pct < threshold) {
     cat(sprintf("FAIL: coverage %.2f%% is below threshold %.2f%%\n", pct, threshold))
