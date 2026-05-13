@@ -104,6 +104,10 @@ Generate a line-coverage report for `fertilizer_scaling_functions.R`:
 
     Rscript tests/coverage.R
 
+This requires a one-time installation of the `covr` tool:
+
+     Rscript -e 'renv::install("covr")'
+
 The script instruments the source file with `covr` and runs both the
 fast and slow test suites against it. The slow PNG-regression tests
 are required to cover `main()`, `plot_diagnostics()`, and
