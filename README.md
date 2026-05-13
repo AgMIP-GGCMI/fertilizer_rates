@@ -99,6 +99,16 @@ drops below it (intended for CI):
 
     Rscript tests/coverage.R 90
 
+A companion fast-only report measures the support library files
+(`fertilizer_scaling_settings.R`,
+`fertilizer_scaling_plot_diagnostics_functions.R`,
+`tools/diagnostics_png_harness.R`) using just the fast suite — it runs
+in seconds and is forward-looking scaffolding for future unit tests of
+those helpers (today's number is 0% because no fast tests exercise
+them):
+
+    Rscript tests/coverage_fast.R
+
 ## Running the R scripts
 
 ```bash
