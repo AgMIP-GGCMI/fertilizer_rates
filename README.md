@@ -94,6 +94,14 @@ are required to cover `main()`, `plot_diagnostics()`, and
 `compare_relative_lambda()` — they are exercised end-to-end rather
 than unit-tested — so the run takes a few minutes.
 
+It prints a per-file summary to the console and, when the optional
+rendering deps are available, also writes a per-line HTML report to
+`coverage.html` (gitignored). Open it in a browser to see exactly
+which expressions went uncovered. The HTML deps aren't in `renv.lock`
+because of their transitive footprint; enable HTML output with:
+
+    Rscript -e 'renv::install(c("DT", "htmltools"))'
+
 Pass an optional threshold percentage to fail the run when coverage
 drops below it (intended for CI):
 
@@ -105,7 +113,8 @@ A companion fast-only report measures the support library files
 `tools/diagnostics_png_harness.R`) using just the fast suite — it runs
 in seconds and is forward-looking scaffolding for future unit tests of
 those helpers (today's number is 0% because no fast tests exercise
-them):
+them). It writes `coverage_fast.html` under the same DT/htmltools
+condition as above:
 
     Rscript tests/coverage_fast.R
 
