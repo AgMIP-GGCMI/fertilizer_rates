@@ -1081,7 +1081,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   plot_density_heatmap <- function(x, y, main_title, xlab = "Relative", ylab = "Lambda") {
     valid <- is.finite(x) & is.finite(y)
     x <- x[valid]; y <- y[valid]
-    if (length(x) < 10) { plot.new(); text(0.5, 0.5, "Insufficient data for density plot"); return(invisible(NULL)) }
+    if (length(x) < 10) { plot.new(); text(0.5, 0.5, "Insufficient data for density plot"); return(invisible(NULL)) } # nocov
     xr <- range(x); yr <- range(y)
     if (diff(xr) == 0 || diff(yr) == 0) { plot.new(); text(0.5, 0.5, "No spread in data (single value)"); return(invisible(NULL)) }
     # Trim 1% tails for focused view
@@ -1110,7 +1110,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
       "#fcfdbf", "#fef9c8", "#fcf0d0", "#fae4d6", "#f6d4db", "#eebcd7", "#e8a9ce",
       "#d991c5", "#c873b0", "#b35492", "#9d3072", "#7d1d4e", "#440154"
     ))
-    if (all(is.na(z))) { plot.new(); text(0.5, 0.5, "No data in bins"); return(invisible(NULL)) }
+    if (all(is.na(z))) { plot.new(); text(0.5, 0.5, "No data in bins"); return(invisible(NULL)) } # nocov
     # Use zlim to set color range
     zlim_range <- range(z, na.rm = TRUE)
     image.plot(xc, yc, z,

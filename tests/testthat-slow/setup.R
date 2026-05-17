@@ -13,3 +13,12 @@ source(
   testthat::test_path("..", "..", "fertilizer_scaling_functions.R"),
   chdir = TRUE
 )
+
+# helper-netcdf-fixtures.R (synthetic NetCDF builders) and helper-mock.R
+# (local_mocked_globals) live in tests/testthat/ where they are auto-sourced
+# by testthat for the fast suite. testthat::test_dir() does not cross
+# directories, so the slow suite must source them explicitly.
+source(testthat::test_path("..", "testthat", "helper-netcdf-fixtures.R"),
+       chdir = TRUE)
+source(testthat::test_path("..", "testthat", "helper-mock.R"),
+       chdir = TRUE)
