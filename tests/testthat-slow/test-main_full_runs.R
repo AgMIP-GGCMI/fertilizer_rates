@@ -15,11 +15,19 @@ setup_full_run <- function(envir = parent.frame()) {
   passthrough <- function(data_5min, lon_5min, lat_5min) {
     list(data = data_5min, lon = lon_5min, lat = sort(lat_5min))
   }
+  # compare_relative_lambda's plot_density_heatmap bins 12 grid cells into
+  # 40x40 bins; each point lands in a unique bin, so range(z) = c(1,1) and
+  # image.plot dies. The crash is caught by the tryCatch handler, but that
+  # would accidentally cover lines 1353-1358 from these end-to-end tests.
+  # Stub it out so coverage of the handler comes from the targeted test at
+  # tests/testthat/test-compare_relative_lambda_trycatch.R.
+  noop_compare <- function(...) invisible(NULL)
   local_mocked_globals(
     base_path_5min = spatial,
     base_path_timeseries = ts,
     output_base_path = out,
     aggregate_to_halfdegree = passthrough,
+    compare_relative_lambda = noop_compare,
     .envir = envir
   )
   list(spatial = spatial, ts = ts, out = out)
