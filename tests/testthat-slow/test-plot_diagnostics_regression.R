@@ -13,6 +13,8 @@ source(
   chdir = TRUE
 )
 
+baseline_dir <- testthat::test_path("baselines")
+
 render_scenario <- function(crop, scenario, iam = NULL, gcm = NULL) {
   tmp <- tempfile(paste0("diagnostics-", scenario, "-"))
   dir.create(tmp, recursive = TRUE)
@@ -29,14 +31,52 @@ snapshot_all_pngs <- function(tmp_dir) {
   }
 }
 
+read_first_3_years <- function(path, var_name) {
+  nc <- ncdf4::nc_open(path)
+  on.exit(ncdf4::nc_close(nc), add = TRUE)
+  list(
+    data = ncdf4::ncvar_get(nc, var_name,
+                            start = c(1, 1, 1), count = c(-1, -1, 3)),
+    lon  = ncdf4::ncvar_get(nc, "lon"),
+    lat  = ncdf4::ncvar_get(nc, "lat"),
+    time = ncdf4::ncvar_get(nc, "time")[1:3]
+  )
+}
+
+expect_ssp126_mai_baselines <- function(tmp) {
+  for (method in c("relative", "lambda")) {
+    produced_path <- file.path(
+      tmp, "nc-outputs", "ssp126soc-adapt", method,
+      sprintf("n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2100.nc", method)
+    )
+    baseline_path <- file.path(
+      baseline_dir,
+      sprintf("n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2017.nc", method)
+    )
+    expect_true(file.exists(produced_path),
+                label = sprintf("main() produced %s output", method))
+    obs <- read_first_3_years(produced_path, "fertl_mai")
+    exp <- read_first_3_years(baseline_path, "fertl_mai")
+    expect_equal(obs$data, exp$data, tolerance = 0,
+                 label = sprintf("first 3 years of %s data", method))
+    expect_equal(obs$lon,  exp$lon,  tolerance = 0,
+                 label = sprintf("%s lon coords", method))
+    expect_equal(obs$lat,  exp$lat,  tolerance = 0,
+                 label = sprintf("%s lat coords", method))
+    expect_equal(obs$time, exp$time, tolerance = 0,
+                 label = sprintf("%s time coords (first 3)", method))
+  }
+}
+
 test_that("plot_diagnostics output is byte-identical for mai histsoc", {
   tmp <- render_scenario("mai", "histsoc")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   snapshot_all_pngs(tmp)
 })
 
-test_that("plot_diagnostics output is byte-identical for mai ssp126 image gfdl-esm4", {
+test_that("plot_diagnostics + NetCDF outputs match baselines for mai ssp126 image gfdl-esm4", {
   tmp <- render_scenario("mai", "ssp126", "image", "gfdl-esm4")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   snapshot_all_pngs(tmp)
+  expect_ssp126_mai_baselines(tmp)
 })

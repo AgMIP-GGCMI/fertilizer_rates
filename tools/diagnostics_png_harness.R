@@ -14,6 +14,10 @@
 #
 # Cairo + renv-pinned R + pinned Debian cairo/png packages make output
 # byte-identical inside the devcontainer.
+#
+# The function also redirects output_base_path into <png_output_dir>/nc-outputs
+# for the duration of the call, so all of main()'s filesystem outputs are
+# contained inside png_output_dir.
 # ============================================================================
 
 .HARNESS_PNG_DPI <- 100
@@ -50,6 +54,17 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
                      res = .HARNESS_PNG_DPI)
     },
     envir = globalenv())
+
+  # Redirect NetCDF outputs into a `nc-outputs/` subdir of png_output_dir so
+  # the harness's filesystem footprint is contained. Tests that need to
+  # compare against baseline NetCDFs read from this location.
+  orig_output_base_path <- output_base_path
+  nc_dir <- file.path(png_output_dir, "nc-outputs")
+  dir.create(nc_dir, showWarnings = FALSE, recursive = TRUE)
+  assign("output_base_path", nc_dir, envir = globalenv())
+  on.exit({
+    assign("output_base_path", orig_output_base_path, envir = globalenv())
+  }, add = TRUE)
 
   main(crop, scenario, iam = iam, gcm = gcm)
 }
