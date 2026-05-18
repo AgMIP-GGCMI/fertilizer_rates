@@ -355,46 +355,11 @@ plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
 # plot_sample_timeseries
 # ----------------------------------------------------------------------------
 # Renders one line plot showing original vs scaled time series at each
-# sample location. Coordinate-system-flip logic preserved verbatim from the
-# original plot_diagnostics body because the flip reflects real index-order
-# differences between the aggregated and ISIMIP3b arrays.
+# sample location.
 # ----------------------------------------------------------------------------
 plot_sample_timeseries <- function(base_rate, scaled_data, timeseries, lon, lat,
                                    start_year, end_year, sample_locations, crop) {
   # ===== SAMPLE LOCATION TIME SERIES EXTRACTION =====
-  # 
-  # IMPORTANT: Coordinate System Mismatch Between Datasets
-  # 
-  # This script works with two different coordinate systems:
-  # 
-  # 1. Aggregated data (base_rate, scaled_data):
-  #    - Created by aggregating from 5 arcmin to 0.5 degree resolution
-  #    - Latitude ordering: South -> North (-89.75 to 89.75)
-  #    - Index j increases as latitude increases
-  #
-  # 2. Time series data (timeseries array):
-  #    - From ISIMIP3b original files
-  #    - Latitude ordering: North -> South (89.75 to -89.75) 
-  #    - Index j decreases as latitude increases
-  #
-  # VISUAL MAPPING:
-  #    plot_map() function displays data with: data[, length(lat):1]
-  #    This flips the lat dimension for display, so map position j_display = length(lat) - j_original
-  #    The add_sample_markers() function correctly uses geographic coordinates (lon, lat)
-  #    which display at the correct position on the map.
-  #
-  # TIME SERIES EXTRACTION:
-  #    To extract time series data at a location that shows correctly on the map:
-  #    j_ts = length(lat) - j + 1
-  #    Then access: timeseries[i, j_ts, t] to get correct data
-  #    Similarly: scaled_data[i, j_ts, t] (also uses timeseries indexing internally)
-  #
-  # EXAMPLE:
-  #    If a location matches to j=199 in the South->North (aggregated) system,
-  #    and length(lat)=360:
-  #      j_ts = 360 - 199 + 1 = 162
-  #      This correctly maps to the same geographic location in the North->South (ISIMIP) system
-  #
   # Find nearest grid cells to these locations
   # Since all pixels have valid data, use simple nearest-neighbor matching
   sample_cells <- list()
@@ -412,24 +377,15 @@ plot_sample_timeseries <- function(base_rate, scaled_data, timeseries, lon, lat,
     # Get actual matched coordinates
     actual_lon <- lon[i]
     actual_lat <- lat[j]
-    
-    # CRITICAL COORDINATE SYSTEM HANDLING:
-    # - base_rate and scaled_data use lat from aggregation (South->North: -89.75 to 89.75)
-    # - timeseries uses original ISIMIP lat ordering (North->South: 89.75 to -89.75)
-    # - plot_map() flips lat for display: data[, length(lat):1]
-    # - To extract time series at correct map location, flip j index: j_ts = length(lat) - j + 1
-    j_ts <- length(lat) - j + 1
-    
-    # Store all data - use j_ts (flipped) for timeseries AND scaled_data extraction
+
     sample_cells[[k]] <- list(
       i = i, j = j,
-      j_ts = j_ts,
       actual_lon = actual_lon,
       actual_lat = actual_lat,
       description = sample_locations$description[k],
       base_rate_val = base_rate[i, j],
-      ts_scaled = scaled_data[i, j_ts, ],  # Use flipped j (computed with timeseries indexing)
-      ts_original = timeseries[i, j_ts, ]  # Use flipped j
+      ts_scaled = scaled_data[i, j, ],
+      ts_original = timeseries[i, j, ]
     )
   }
   
