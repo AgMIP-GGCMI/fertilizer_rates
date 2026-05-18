@@ -714,6 +714,12 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     
     ts_hist <- ncvar_get(nc_hist, varid = funcgroup)
     print(paste("Historical TS dims:", paste(dim(ts_hist), collapse = "x")))
+    # Canonicalize lat axis to ascending to match aggregate_to_halfdegree's
+    # output convention. ISIMIP3b TS files store lat north->south.
+    ts_hist_lat <- ncvar_get(nc_hist, varid = "lat")
+    if (any(diff(ts_hist_lat) < 0)) {
+      ts_hist <- ts_hist[, dim(ts_hist)[2]:1, ]
+    }
     missval_hist <- ncatt_get(nc_hist, varid = funcgroup, attname = "_FillValue")
     if (missval_hist$hasatt) {
       ts_hist[ts_hist == missval_hist$value] <- NA
@@ -784,6 +790,11 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   # load time series data [lon, lat, time]
   ts_data <- ncvar_get(nc_ts, varid = funcgroup)
   print(paste("Future TS dims:", paste(dim(ts_data), collapse = "x")))
+  # Canonicalize lat axis to ascending to match aggregate_to_halfdegree's
+  # output convention. ISIMIP3b TS files store lat north->south.
+  if (!is.null(ts_lat) && any(diff(ts_lat) < 0)) {
+    ts_data <- ts_data[, dim(ts_data)[2]:1, ]
+  }
   time_vals <- ncvar_get(nc_ts, varid = "time")
   
   # get fill value from NetCDF metadata
