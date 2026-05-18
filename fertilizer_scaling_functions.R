@@ -33,39 +33,51 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # input: 4320 x 2160 (5 arcmin)
   # output: 720 x 360 (0.5 degree)
   # aggregation factor: 6 cells in each direction (6x6 = 36 cells per output cell)
-  
+
   nlon_out <- 720
   nlat_out <- 360
   agg_factor <- 6
-  
+
+  # Derive output coordinates by averaging each 6-cell block of the input
+  # coordinates rather than synthesizing from scratch, so we inherit
+  # whatever convention the input file uses (Mueller 5-min files are
+  # north->south).
+  lon_halfdeg <- colMeans(matrix(lon_5min, nrow = agg_factor))
+  lat_halfdeg <- colMeans(matrix(lat_5min, nrow = agg_factor))
+
   # create output array
   data_halfdeg <- array(NA, dim = c(nlon_out, nlat_out))
-  
+
   # vectorized aggregation using array operations
   # process one output longitude at a time (still faster than nested loop)
   for (i in 1:nlon_out) {
     i_start <- (i - 1) * agg_factor + 1
     i_end <- i * agg_factor
-    
+
     # extract longitude slice for all latitudes at once
     lon_slice <- data_5min[i_start:i_end, ]
-    
+
     # vectorized aggregation over latitude
     for (j in 1:nlat_out) {
       j_start <- (j - 1) * agg_factor + 1
       j_end <- j * agg_factor
-      
+
       # extract block and calculate mean
       block <- lon_slice[, j_start:j_end]
       data_halfdeg[i, j] <- mean(block, na.rm = TRUE)
       if (is.nan(data_halfdeg[i, j])) data_halfdeg[i, j] <- NA
     }
   }
-  
-  # create output lon/lat
-  lon_halfdeg <- seq(-179.75, 179.75, by = 0.5)
-  lat_halfdeg <- seq(-89.75, 89.75, by = 0.5)
-  
+
+  # Canonicalize to ascending lat with data aligned south->north along the
+  # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
+  # fields::image.plot) an unambiguous contract regardless of which
+  # convention the input file used.
+  if (any(diff(lat_halfdeg) < 0)) {
+    lat_halfdeg <- rev(lat_halfdeg)
+    data_halfdeg <- data_halfdeg[, ncol(data_halfdeg):1]
+  }
+
   return(list(data = data_halfdeg, lon = lon_halfdeg, lat = lat_halfdeg))
 }
 
@@ -1000,8 +1012,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   plot_map_comp <- function(lon, lat, data, title, diverging = FALSE, log_scale = FALSE) {
 
     
-    # Flip data along lat dimension for north-up display
-    data_plot <- data[, c(length(lat):1)]
+    data_plot <- data
 
     
     valid_data <- data_plot[is.finite(data_plot) & abs(data_plot) < 1e+10]
@@ -1127,7 +1138,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   # r = ratio of value in year to reference year; r<1 indicates decrease
   plot_mask_panel <- function(lon, lat, mask_numeric, title) {
     # mask_numeric should be 0/1 with NA for invalid
-    data_plot <- mask_numeric[, c(length(lat):1)]
+    data_plot <- mask_numeric
     col_mask <- c("#eeeeee", "#b2182b")  # light grey for 0 (no decrease), red for 1 (decrease)
     # Ensure zlim spanning 0..1
     image.plot(lon, lat, data_plot,

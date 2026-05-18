@@ -70,7 +70,7 @@ add_sample_markers <- function(lon, lat, sample_locations) {
 # ----------------------------------------------------------------------------
 plot_map <- function(lon, lat, data, title, diverging = FALSE,
                      add_markers = TRUE, sample_locations = NULL) {
-  data_plot <- data[, c(length(lat):1)]
+  data_plot <- data
 
   valid_data <- data_plot[is.finite(data_plot) & abs(data_plot) < 1e+10]
   if (length(valid_data) > 0) {
@@ -135,7 +135,7 @@ plot_aggregation_comparison <- function(base_rate, spatial_data_5min, lon, lat,
              zlim = zlim_5min,
              ylim = c(-65, 90))
 
-  data_halfdeg_plot <- base_rate[, c(length(lat):1)]
+  data_halfdeg_plot <- base_rate
   valid_halfdeg <- data_halfdeg_plot[is.finite(data_halfdeg_plot) & abs(data_halfdeg_plot) < 1e+10]
   if (length(valid_halfdeg) > 0) {
     zlim_halfdeg <- quantile(valid_halfdeg, c(0.02, 0.98), na.rm = TRUE)
@@ -318,7 +318,7 @@ plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
       ratio_capped[ratio_capped > 5] <- 5
       ratio_capped[ratio_capped < 0.2] <- 0.2
 
-      data_plot <- ratio_capped[, c(length(lat):1)]
+      data_plot <- ratio_capped
       valid_data <- data_plot[is.finite(data_plot)]
 
       if (length(valid_data) > 0) {
