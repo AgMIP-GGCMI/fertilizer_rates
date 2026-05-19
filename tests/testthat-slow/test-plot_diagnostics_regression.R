@@ -13,7 +13,11 @@ source(
   chdir = TRUE
 )
 
-baseline_dir <- testthat::test_path("baselines")
+# Use the "..", "testthat-slow" cancellation trick (same as the harness
+# source above) so the path resolves to tests/testthat-slow/baselines under
+# both testthat::test_dir (where test_path() defaults to tests/testthat-slow)
+# and covr::file_coverage (where it defaults to tests/testthat).
+baseline_dir <- testthat::test_path("..", "testthat-slow", "baselines")
 
 render_scenario <- function(crop, scenario, iam = NULL, gcm = NULL) {
   tmp <- tempfile(paste0("diagnostics-", scenario, "-"))
