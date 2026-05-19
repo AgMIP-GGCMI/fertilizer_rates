@@ -58,12 +58,21 @@ render_diagnostics_to_png <- function(png_output_dir, crop, scenario,
   # Redirect NetCDF outputs into a `nc-outputs/` subdir of png_output_dir so
   # the harness's filesystem footprint is contained. Tests that need to
   # compare against baseline NetCDFs read from this location.
+  #
+  # The shadow target is environment(main), not globalenv(), because
+  # fertilizer_scaling_settings.R defines output_base_path in the same env
+  # main() was sourced into -- globalenv under testthat::test_dir, but
+  # covr's private env under covr::file_coverage. Assigning to globalenv()
+  # under covr would be hidden by the covr-env binding when main() looks
+  # output_base_path up lexically, and main() would write to the original
+  # FERT_OUTPUT_BASE_PATH instead of the test's tempdir.
+  target_env <- environment(main)
   orig_output_base_path <- output_base_path
   nc_dir <- file.path(png_output_dir, "nc-outputs")
   dir.create(nc_dir, showWarnings = FALSE, recursive = TRUE)
-  assign("output_base_path", nc_dir, envir = globalenv())
+  assign("output_base_path", nc_dir, envir = target_env)
   on.exit({
-    assign("output_base_path", orig_output_base_path, envir = globalenv())
+    assign("output_base_path", orig_output_base_path, envir = target_env)
   }, add = TRUE)
 
   main(crop, scenario, iam = iam, gcm = gcm)
