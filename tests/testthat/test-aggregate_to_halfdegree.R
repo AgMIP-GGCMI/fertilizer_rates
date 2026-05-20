@@ -47,6 +47,21 @@ test_that("output latitude is canonicalized to ascending when input is descendin
   expect_equal(result$lat[360], 89.75, tolerance = 1e-4)
 })
 
+test_that("non-monotonic input lat fails with a clear error", {
+  # Build a lat axis whose 6-cell block means are neither monotonically
+  # ascending nor monotonically descending, so rev() can't canonicalize it
+  # and the new defensive check fires. Reversing every other 12-cell block
+  # (two output cells' worth) of an otherwise-ascending axis does the trick.
+  lat_bad <- make_lat_asc()
+  for (i in seq(1, length(lat_bad) - 12, by = 24)) {
+    lat_bad[i:(i + 11)] <- rev(lat_bad[i:(i + 11)])
+  }
+  expect_error(
+    aggregate_to_halfdegree(make_input(), make_lon_asc(), lat_bad),
+    "not strictly ascending after canonicalization"
+  )
+})
+
 test_that("uniform input produces a uniform output of the same value", {
   input <- array(3.5, dim = c(4320, 2160))
   result <- aggregate_to_halfdegree(input, make_lon_asc(), make_lat_asc())

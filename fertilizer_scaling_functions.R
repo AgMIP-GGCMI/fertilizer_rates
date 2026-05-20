@@ -70,10 +70,16 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # Canonicalize to ascending lat with data aligned south->north along the
   # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
   # fields::image.plot) an unambiguous contract regardless of which
-  # convention the input file used.
+  # convention the input file used. rev() only fixes the case where the
+  # input is monotonically descending; a non-monotonic lat axis would
+  # silently pass through, so verify strict ascending order after.
   if (any(diff(lat_halfdeg) < 0)) {
     lat_halfdeg <- rev(lat_halfdeg)
     data_halfdeg <- data_halfdeg[, ncol(data_halfdeg):1]
+  }
+  if (any(diff(lat_halfdeg) <= 0)) {
+    stop("aggregate_to_halfdegree: lat_halfdeg is not strictly ascending ",
+         "after canonicalization (input lat is non-monotonic).")
   }
 
   return(list(data = data_halfdeg, lon = lon_halfdeg, lat = lat_halfdeg))
