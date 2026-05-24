@@ -62,6 +62,20 @@ test_that("non-monotonic input lat fails with a clear error", {
   )
 })
 
+test_that("non-monotonic input lon fails with a clear error", {
+  # Same construction as the lat case, applied to lon. lon has no
+  # canonicalization branch, so the input goes straight through colMeans
+  # to the strict-ascending check.
+  lon_bad <- make_lon_asc()
+  for (i in seq(1, length(lon_bad) - 12, by = 24)) {
+    lon_bad[i:(i + 11)] <- rev(lon_bad[i:(i + 11)])
+  }
+  expect_error(
+    aggregate_to_halfdegree(make_input(), lon_bad, make_lat_asc()),
+    "lon_halfdeg is not strictly ascending"
+  )
+})
+
 test_that("uniform input produces a uniform output of the same value", {
   input <- array(3.5, dim = c(4320, 2160))
   result <- aggregate_to_halfdegree(input, make_lon_asc(), make_lat_asc())

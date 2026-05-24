@@ -81,6 +81,13 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
     stop("aggregate_to_halfdegree: lat_halfdeg is not strictly ascending ",
          "after canonicalization (input lat is non-monotonic).")
   }
+  # lon_halfdeg is taken directly from the input with no canonicalization,
+  # so a non-monotonic input lon would silently propagate. Production
+  # 5-min files are monotonic; this catches a corrupted or hand-built input.
+  if (any(diff(lon_halfdeg) <= 0)) {
+    stop("aggregate_to_halfdegree: lon_halfdeg is not strictly ascending ",
+         "(input lon is non-monotonic).")
+  }
 
   return(list(data = data_halfdeg, lon = lon_halfdeg, lat = lat_halfdeg))
 }
