@@ -118,7 +118,7 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
     }
     base_timeseries <- timeseries[, , base_idx]
   }
-  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
+  valid_base <- is.finite(base_rate) & base_rate > 0
   list(
     base_idx        = base_idx,
     base_timeseries = base_timeseries,
@@ -182,7 +182,7 @@ read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year)
 # ============================================================================
 scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base) {
   result <- array(NA_real_, dim = dim(base_rate))
-  valid_ts_base <- valid_base & !is.na(base_timeseries) & is.finite(base_timeseries) & base_timeseries > 0
+  valid_ts_base <- valid_base & is.finite(base_timeseries) & base_timeseries > 0
   rel_change <- array(1, dim = dim(base_rate))
   rel_change[valid_ts_base] <- ts_t[valid_ts_base] / base_timeseries[valid_ts_base]
   result[valid_base] <- base_rate[valid_base] * rel_change[valid_base]
@@ -235,11 +235,16 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
     result <- array(NA_real_, dim = c(nlon, nlat))
     for (i in 1:nlon) {
       for (j in 1:nlat) {
-        if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-          fert_diff <- ts_t[i, j] - base_timeseries[i, j]
-          ratio_base <- base_rate[i, j] / base_timeseries[i, j]
-          ratio_term <- ratio_base ^ lambda[i, j]
-          result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
+        if (valid_base[i, j]) {
+          if (base_rate[i, j] == 0) {
+            # For true zero-base cells (not NA), carry the raw TS signal.
+            result[i, j] <- ts_t[i, j]
+          } else if (!is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
+            fert_diff <- ts_t[i, j] - base_timeseries[i, j]
+            ratio_base <- base_rate[i, j] / base_timeseries[i, j]
+            ratio_term <- ratio_base ^ lambda[i, j]
+            result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
+          }
           if (!is.na(result[i, j]) && result[i, j] < 0) {
             result[i, j] <- 0
           }
@@ -354,6 +359,8 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
   
   if (method == "relative") {
+    # Relative method keeps the historical behavior: only base_rate > 0 cells
+    # are considered valid for scaling.
     for (t in 1:ntimes) {
       scaled_data[, , t] <- scale_relative_timestep(
         base_rate, timeseries[, , t], base_timeseries, valid_base
@@ -361,13 +368,17 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     }
 
   } else if (method == "lambda") {
+    # Lambda method: treat base-rate zeros differently from NA. NA cells remain
+    # invalid, while zero-base cells copy the raw TS trajectory.
+    valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
+
     # Lambda method: see compute_lambda and scale_lambda_timestep.
-    lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
+    lambda <- compute_lambda(base_rate, base_timeseries, valid_base_lambda)
 
     for (t in 1:ntimes) {
       tryCatch({
         scaled_data[, , t] <- scale_lambda_timestep(
-          base_rate, timeseries[, , t], base_timeseries, valid_base, lambda
+          base_rate, timeseries[, , t], base_timeseries, valid_base_lambda, lambda
         )
       }, lambda_timestep_error = function(e) {
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
@@ -754,8 +765,6 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   }
   # also catch any extreme values that might be fill values
   spatial_data[abs(spatial_data) >= 1e+19] <- NA
-  # convert very small values (likely numerical artifacts in ocean) to NA
-  spatial_data[abs(spatial_data) < 1e-6 & !is.na(spatial_data)] <- NA
   
   # handle 2D or 3D data (if only 1 time step, drop the time dimension)
   if (length(dim(spatial_data)) == 3) {

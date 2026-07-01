@@ -69,6 +69,20 @@ test_that("invalid base_timeseries cells remain NA", {
   expect_true(is.na(out[2, 1]))
 })
 
+test_that("zero base_rate cells copy raw timeseries values in lambda method", {
+  base_rate <- matrix(c(0, 20, 30, 40), nrow = 2)
+  base_timeseries <- matrix(c(0, 4, 6, 8), nrow = 2)
+  valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate >= 0
+  lambda <- compute_lambda(base_rate, base_timeseries, valid_base)
+  ts_t <- matrix(c(7, 5, 9, 11), nrow = 2)
+
+  out <- scale_lambda_timestep(base_rate, ts_t, base_timeseries,
+                               valid_base, lambda)
+
+  expect_equal(out[1, 1], ts_t[1, 1])
+  expect_true(!is.na(out[1, 1]))
+})
+
 test_that("internal error re-throws as a lambda_timestep_error with i/j/nlon/nlat", {
   # Provide a lambda array with wrong dims to force an error inside the loop.
   base_rate <- matrix(c(10, 20, 30, 40), nrow = 2, ncol = 2)

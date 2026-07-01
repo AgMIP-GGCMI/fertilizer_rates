@@ -132,6 +132,7 @@ test_that("scale_with_timeseries calls scale_relative_timestep once per t with c
 
 test_that("scale_with_timeseries calls compute_lambda once for lambda method with correct args", {
   fx <- make_harness_fixture()
+  fx$base_rate[1, 1] <- 0
   called_with <- NULL
   call_count <- 0
   local_mocked_globals(
@@ -152,7 +153,7 @@ test_that("scale_with_timeseries calls compute_lambda once for lambda method wit
   expect_equal(called_with$base_rate, fx$base_rate)
   expect_equal(called_with$base_timeseries, fx$timeseries[, , 2])
   expect_equal(called_with$valid_base,
-               !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate > 0)
+               !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate >= 0)
 })
 
 test_that("scale_with_timeseries does not call compute_lambda for relative method", {
@@ -174,6 +175,7 @@ test_that("scale_with_timeseries does not call compute_lambda for relative metho
 
 test_that("scale_with_timeseries calls scale_lambda_timestep once per t with correct args", {
   fx <- make_harness_fixture()
+  fx$base_rate[1, 1] <- 0
   calls <- list()
   local_mocked_globals(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
@@ -200,10 +202,21 @@ test_that("scale_with_timeseries calls scale_lambda_timestep once per t with cor
   }
   expected_lambda <- compute_lambda(
     fx$base_rate, fx$timeseries[, , 2],
-    !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate > 0
+    !is.na(fx$base_rate) & is.finite(fx$base_rate) & fx$base_rate >= 0
   )
   expect_equal(calls[[1]]$lambda, expected_lambda)
   expect_true(all(result == -999))
+})
+
+test_that("lambda method uses raw TS for zero base-rate cells", {
+  fx <- make_harness_fixture()
+  fx$base_rate[1, 1] <- 0
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "lambda")
+  )
+  expect_equal(result[1, 1, ], fx$timeseries[1, 1, ])
 })
 
 test_that("scale_with_timeseries applies hard 500 kgN/ha cap for lambda method", {
