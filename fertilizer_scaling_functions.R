@@ -102,20 +102,74 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
 # Returns: list(base_idx, base_timeseries, valid_base).
 # ============================================================================
 prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
-                                   start_year, end_year) {
+                                   start_year, end_year,
+                                   base_timeseries_override = NULL) {
   ntimes <- dim(timeseries)[3]
   base_idx <- base_year - start_year + 1
-  if (base_idx < 1 || base_idx > ntimes) {
-    stop(paste("Base year", base_year, "is outside the time series range",
-               start_year, "-", end_year))
+  if (!is.null(base_timeseries_override)) {
+    base_timeseries <- base_timeseries_override
+    if (all(is.na(base_idx)) || base_idx < 1 || base_idx > ntimes) {
+      base_idx <- NA_integer_
+    }
+  } else {
+    if (base_idx < 1 || base_idx > ntimes) {
+      stop(paste("Base year", base_year, "is outside the time series range",
+                 start_year, "-", end_year))
+    }
+    base_timeseries <- timeseries[, , base_idx]
   }
-  base_timeseries <- timeseries[, , base_idx]
   valid_base <- !is.na(base_rate) & is.finite(base_rate) & base_rate > 0
   list(
     base_idx        = base_idx,
     base_timeseries = base_timeseries,
     valid_base      = valid_base
   )
+}
+
+# ==========================================================================
+# FUNCTION: read_timeseries_year_slice
+# ==========================================================================
+# Read a single [lon, lat] year slice from a time-series NetCDF without
+# loading the full time axis into memory.
+# ===========================================================================
+read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year) {
+  if (!file.exists(ts_file)) {
+    stop(paste("Time series file does not exist:", ts_file))
+  }
+
+  nc <- nc_open(ts_file)
+  on.exit(nc_close(nc), add = TRUE)
+
+  if (!(var_name %in% names(nc$var))) {
+    stop(paste("Variable", var_name, "not found in time series file"))
+  }
+
+  slice_idx <- year - file_start_year + 1
+  if (slice_idx < 1 || slice_idx > nc$var[[var_name]]$varsize[3]) {
+    stop(paste("Year", year, "is outside the time series range in", ts_file))
+  }
+
+  year_slice <- ncvar_get(nc, varid = var_name,
+                          start = c(1, 1, slice_idx), count = c(-1, -1, 1))
+
+  # Normalize to [lon, lat, time] so downstream indexing is shape-invariant
+  # regardless of whether ncvar_get dropped the singleton time dimension.
+  if (length(dim(year_slice)) == 2) {
+    year_slice <- array(year_slice, dim = c(nrow(year_slice), ncol(year_slice), 1))
+  }
+
+  ts_lat <- ncvar_get(nc, varid = "lat")
+  if (any(diff(ts_lat) < 0)) {
+    year_slice <- year_slice[, dim(year_slice)[2]:1, , drop = FALSE]
+  }
+
+  missval <- ncatt_get(nc, varid = var_name, attname = "_FillValue")
+  if (missval$hasatt) {
+    year_slice[year_slice == missval$value] <- NA
+  }
+  year_slice[abs(year_slice) >= 1e+19] <- NA
+
+  year_slice[, , 1, drop = FALSE][, , 1]
 }
 
 # ============================================================================
@@ -278,8 +332,10 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   "lambda": precipitation-style scaling with anomalies and lambda correction
 # ============================================================================
 scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
-                                   start_year, end_year, method = "relative") {
+                                   start_year, end_year, method = "relative",
+                                   base_timeseries = NULL) {
   print(paste("Using scaling method:", method))
+  lambda_max_rate <- 500
   
   # get dimensions
   nlon <- dim(timeseries)[1]
@@ -288,7 +344,9 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
   # validate + precompute common pieces
   prep <- prepare_scaling_inputs(base_rate, timeseries, base_year,
-                                 start_year, end_year)
+                                 start_year, end_year,
+                                 base_timeseries_override = base_timeseries)
+  base_idx         <- prep$base_idx
   base_timeseries <- prep$base_timeseries
   valid_base      <- prep$valid_base
 
@@ -321,6 +379,12 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
         stop(e$original)
       })
     }
+
+    # Apply a hard cap for lambda outputs to avoid implausibly high rates.
+    scaled_data[!is.na(scaled_data)] <- pmin(
+      scaled_data[!is.na(scaled_data)],
+      lambda_max_rate
+    )
     
   } else {
     stop(paste("Unknown scaling method:", method))
@@ -341,6 +405,9 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 # correlation is NA when n_valid == 0.
 # ============================================================================
 check_base_year_match <- function(scaled_data, base_rate, base_idx) {
+  if (is.na(base_idx) || base_idx < 1 || base_idx > dim(scaled_data)[3]) {
+    return(list(n_valid = 0, correlation = NA_real_))
+  }
   scaled_base <- scaled_data[, , base_idx]
   valid_cells <- !is.na(base_rate) & !is.na(scaled_base)
   n_valid <- sum(valid_cells)
@@ -434,6 +501,10 @@ check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
   nlon <- dim(scaled_data)[1]
   nlat <- dim(scaled_data)[2]
   ntime <- dim(scaled_data)[3]
+
+  if (is.na(base_idx) || base_idx < 1 || base_idx > ntime) {
+    return(list(found = FALSE, checks = list()))
+  }
 
   checks <- list()
   found <- FALSE
@@ -565,7 +636,8 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                             start_year, end_year, crop, scenario, output_dir, method = "relative",
                             spatial_data_5min = NULL, lon_5min = NULL, lat_5min = NULL,
-                            iam = NULL, gcm = NULL) {
+                            iam = NULL, gcm = NULL,
+                            base_timeseries_override = NULL) {
   
   # Define output PDF file and open device
   # Construct explicit, scenario/method-specific filename aligned with NetCDF naming
@@ -587,6 +659,11 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   ntime <- dim(scaled_data)[3]
   mid_idx <- ntime %/% 2
   base_idx <- base_year - start_year + 1
+  scaled_base_override <- if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
+    NULL
+  } else {
+    base_rate
+  }
 
   # Set up layout for multiple plots (4 rows x 3 columns)
   par(mfrow = c(4, 3), mar = c(4, 4, 3, 6))
@@ -603,19 +680,24 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
                     start_year, end_year, mid_idx, crop, method)
 
-  plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop)
+  plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop,
+                         scaled_base_override = scaled_base_override)
 
-  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, base_year, end_year, crop)
+  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, base_year, end_year, crop,
+                                               scaled_base_override = scaled_base_override)
 
-  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop)
+  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop,
+                        base_timeseries_override = base_timeseries_override)
 
   plot_sample_timeseries(base_rate, scaled_data, timeseries, lon, lat,
                          start_year, end_year, sample_locations, crop)
 
   plot_distribution_histograms(base_rate, scaled_data, timeseries, base_idx,
-                               base_year, end_year, crop)
+                               base_year, end_year, crop,
+                               base_timeseries_override = base_timeseries_override)
 
-  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, base_year, end_year)
+  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, base_year, end_year,
+                       base_timeseries_override = base_timeseries_override)
 
   dev.off()
   
@@ -695,51 +777,25 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   lat_halfdeg <- agg_result$lat
   
   # load time series - for future scenarios, combine with historical data
+  base_timeseries <- NULL
   if (scenario == "histsoc") {
     ts_file <- paste0(base_path_timeseries, "/histsoc/n-fertilizer-5crops_histsoc_annual_1850_2014.nc")
     start_year_ts <- 1850
     end_year_ts <- 2014
     ts_data_list <- list()
   } else {
-    # For future scenarios, load both historical and future data
+    # For future scenarios, we only need the historical base-year slice for
+    # scaling, plus the future time series for the years we actually compute.
     ts_file_hist <- paste0(base_path_timeseries, "/histsoc/n-fertilizer-5crops_histsoc_annual_1850_2014.nc")
     ts_file_future <- paste0(base_path_timeseries, "/", scenario, "soc-adapt/n-fertilizer-5crops_",
                            iam, "_", gcm, "_", scenario, "_annual_2015_2100.nc")
-    ts_data_list <- list()
-    
-    # Load historical
-    if (!file.exists(ts_file_hist)) {
-      print(paste("Historical time series file not found:", ts_file_hist))
-      return()
-    }
-    
-    print(paste("Loading historical time series from", ts_file_hist))
-    nc_hist <- nc_open(ts_file_hist)
+
+    # Load the historical base-year slice only (year 2000), not the full
+    # 1850-2014 series. This avoids computing/scaling historical years in
+    # future scenario tasks.
     funcgroup <- crop_to_funcgroup[[crop]]
-    
-    if (!(funcgroup %in% names(nc_hist$var))) {
-      print(paste("Variable", funcgroup, "not found in historical file"))
-      nc_close(nc_hist)
-      return()
-    }
-    
-    ts_hist <- ncvar_get(nc_hist, varid = funcgroup)
-    print(paste("Historical TS dims:", paste(dim(ts_hist), collapse = "x")))
-    # Canonicalize lat axis to ascending to match aggregate_to_halfdegree's
-    # output convention. ISIMIP3b TS files store lat north->south.
-    ts_hist_lat <- ncvar_get(nc_hist, varid = "lat")
-    if (any(diff(ts_hist_lat) < 0)) {
-      ts_hist <- ts_hist[, dim(ts_hist)[2]:1, ]
-    }
-    missval_hist <- ncatt_get(nc_hist, varid = funcgroup, attname = "_FillValue")
-    if (missval_hist$hasatt) {
-      ts_hist[ts_hist == missval_hist$value] <- NA
-    }
-    ts_hist[abs(ts_hist) >= 1e+19] <- NA
-    
-    nc_close(nc_hist)
-    
-    ts_data_list$hist <- list(data = ts_hist, start = 1850, end = 2014)
+    print(paste("Loading historical base-year slice from", ts_file_hist))
+    base_timeseries <- read_timeseries_year_slice(ts_file_hist, funcgroup, base_year, 1850)
   }
   
   # Load future or histsoc data
@@ -820,24 +876,15 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   
   # Combine historical and future data if needed
   if (scenario != "histsoc") {
-    print("Combining historical and future time series")
-    ts_hist_data <- ts_hist  # Data is [lon, lat, time]
-    # Both are [lon, lat, time], bind along time dimension (dimension 3)
-    print(paste("Historical dims:", paste(dim(ts_hist_data), collapse = "x")))
-    print(paste("Future dims:", paste(dim(ts_data), collapse = "x")))
-    ts_data_combined <- abind::abind(ts_hist_data, ts_data, along = 3)
-    print(paste("Combined dims:", paste(dim(ts_data_combined), collapse = "x")))
-    start_year_ts <- 1850
+    print("Using future time series only for scaling; historical base-year slice was loaded separately")
     end_year_ts <- 2100
-    ts_data <- ts_data_combined
+    start_year_ts <- 2015
   } else {
     start_year_ts <- 1850
     end_year_ts <- 2014
   }
   
-  # Loop over both scaling methods for comparison
-  scaling_methods <- c("relative", "lambda")
-  
+  # Loop over configured scaling methods from settings.
   for (method in scaling_methods) {
     print(paste("\n=================================================="))
     print(paste("Processing with method:", method))
@@ -845,7 +892,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     
     # scale the data
     print(paste("Scaling with time series using method:", method))
-    scaled_data <- scale_with_timeseries(base_rate, ts_data, base_year, start_year_ts, end_year_ts, method = method)
+    scaled_data <- scale_with_timeseries(base_rate, ts_data, base_year, start_year_ts, end_year_ts,
+                       method = method, base_timeseries = base_timeseries)
     
     # create output directory for diagnostics
     if (scenario == "histsoc") {
@@ -864,7 +912,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     plot_diagnostics(base_rate, scaled_data, ts_data, lon_halfdeg, lat_halfdeg,
             start_year_ts, end_year_ts, crop, scenario, output_dir, method = method,
             spatial_data_5min = spatial_data_2d, lon_5min = lon_5min, lat_5min = lat_5min,
-            iam = iam, gcm = gcm)
+          iam = iam, gcm = gcm,
+          base_timeseries_override = base_timeseries)
     
     # Write output file(s)
     write_netcdf_file <- function(data_slice, yr_start, yr_end, out_file) {
@@ -879,6 +928,10 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
       dim_lat <- ncdim_def("lat", "degrees_north", lat_halfdeg)
       dim_time <- ncdim_def("time", paste("years since", yr_start - 1, "-1-1 00:00:00"),
                            (yr_start:yr_end) - (yr_start - 1))
+
+      # Chunk one full spatial field per timestep. With var dims ordered as
+      # [lon, lat, time], this appears as [1, 360, 720] in ncdump output.
+      chunk_sizes <- c(length(lon_halfdeg), length(lat_halfdeg), 1)
       
       # define variable
       ncv <- ncvar_def(name = paste0("fertl_", crop),
@@ -888,6 +941,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
                       units = "kg ha-1 yr-1",
                       longname = paste("N fertilizer application rate for", crop),
                       compression = 9,
+                      chunksizes = chunk_sizes,
                       verbose = FALSE)
       
       # create file
@@ -914,22 +968,12 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
                "_", scenario, "_", method, "_annual_1850_2014.nc")
       write_netcdf_file(scaled_data, 1850, 2014, output_file)
     } else {
-      # Write both histsoc (1850-2014) and future (2015-2100) files
-      # Extract time slices
-      hist_idx_start <- 1
-      hist_idx_end <- 2014 - 1850 + 1  # 165 years (1850-2014)
-      future_idx_start <- hist_idx_end + 1
-      future_idx_end <- 165 + 86  # 2100 - 2015 + 1 = 86 years
-      
-      scaled_hist <- scaled_data[, , hist_idx_start:hist_idx_end]
+      # Write future file only. The dedicated histsoc task is the only place
+      # that computes and writes the historical output.
+      future_idx_start <- (2015 - start_year_ts) + 1
+      future_idx_end <- dim(scaled_data)[3]
       scaled_future <- scaled_data[, , future_idx_start:future_idx_end]
-      
-      # Write histsoc file
-      output_file_hist <- paste0(output_base_path, "/histsoc/", method, "/n-fertilizer_", crop,
-                "_histsoc_", method, "_annual_1850_2014.nc")
-      write_netcdf_file(scaled_hist, 1850, 2014, output_file_hist)
-      
-      # Write future file
+
       output_file_future <- paste0(output_base_path, "/", scenario, "soc-adapt/", method, 
                   "/n-fertilizer_", crop, "_", iam, "_", gcm, "_", scenario, 
                   "_", method, "_annual_2015_2100.nc")
@@ -938,13 +982,17 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     
   }  # End of method loop
 
-  # Compare relative vs lambda outputs (both NetCDFs now exist)
-  comparison_dir <- if (scenario == "histsoc") {
-    paste0(output_base_path, "/", scenario)
+  # Compare relative vs lambda outputs only when both methods were produced.
+  if (all(c("relative", "lambda") %in% scaling_methods)) {
+    comparison_dir <- if (scenario == "histsoc") {
+      paste0(output_base_path, "/", scenario)
+    } else {
+      paste0(output_base_path, "/", scenario, "soc-adapt")
+    }
+    compare_relative_lambda(crop, scenario, iam, gcm, output_dir = comparison_dir)
   } else {
-    paste0(output_base_path, "/", scenario, "soc-adapt")
+    print("Skipping compare_relative_lambda because both 'relative' and 'lambda' are not enabled")
   }
-  compare_relative_lambda(crop, scenario, iam, gcm, output_dir = comparison_dir)
 
   print(paste("Completed processing for", crop, scenario))
 }

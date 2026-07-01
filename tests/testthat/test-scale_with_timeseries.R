@@ -75,10 +75,12 @@ test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
   captured <- list()
   local_mocked_globals(
     prepare_scaling_inputs = function(base_rate, timeseries, base_year,
-                                      start_year, end_year) {
+                                      start_year, end_year,
+                                      base_timeseries_override = NULL) {
       captured <<- list(
         base_rate = base_rate, timeseries = timeseries,
-        base_year = base_year, start_year = start_year, end_year = end_year
+        base_year = base_year, start_year = start_year, end_year = end_year,
+        base_timeseries_override = base_timeseries_override
       )
       # Return a valid prep so scale_with_timeseries can proceed.
       list(
@@ -98,6 +100,7 @@ test_that("scale_with_timeseries calls prepare_scaling_inputs with raw args", {
   expect_equal(captured$base_year, fx$base_year)
   expect_equal(captured$start_year, fx$start_year)
   expect_equal(captured$end_year, fx$end_year)
+  expect_null(captured$base_timeseries_override)
 })
 
 test_that("scale_with_timeseries calls scale_relative_timestep once per t with correct args", {
@@ -201,6 +204,25 @@ test_that("scale_with_timeseries calls scale_lambda_timestep once per t with cor
   )
   expect_equal(calls[[1]]$lambda, expected_lambda)
   expect_true(all(result == -999))
+})
+
+test_that("scale_with_timeseries applies hard 500 kgN/ha cap for lambda method", {
+  fx <- make_harness_fixture()
+  local_mocked_globals(
+    scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
+                                     valid_base, lambda) {
+      matrix(c(100, 500, 650, 1200), nrow = 2)
+    }
+  )
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "lambda")
+  )
+  expect_true(all(result <= 500, na.rm = TRUE))
+  expect_equal(result[, , 1], matrix(c(100, 500, 500, 500), nrow = 2))
+  expect_equal(result[, , 2], matrix(c(100, 500, 500, 500), nrow = 2))
+  expect_equal(result[, , 3], matrix(c(100, 500, 500, 500), nrow = 2))
 })
 
 test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {

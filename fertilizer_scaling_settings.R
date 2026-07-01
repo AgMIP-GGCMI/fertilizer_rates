@@ -77,5 +77,9 @@ ssps <- c("ssp126", "ssp370", "ssp585")
 iams <- c("image", "magpie")
 gcms <- c("gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll")
 
+# scaling methods to run (edit here for manual control)
+scaling_methods <- c("lambda")  #c("relative", "lambda")
+
+
 # reference year for relative scaling
 base_year <- 2000

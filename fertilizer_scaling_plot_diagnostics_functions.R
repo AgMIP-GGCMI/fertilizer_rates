@@ -221,9 +221,36 @@ plot_pattern_maps <- function(base_rate, scaled_data, lon, lat, sample_locations
 # Renders a scatter plot of scaled vs original values at the base year,
 # with 1:1 reference line and correlation / RMSE / bias legend.
 # ----------------------------------------------------------------------------
-plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, crop) {
+plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, crop,
+                                   scaled_base_override = NULL) {
   ntime <- dim(scaled_data)[3]
-  if (base_idx >= 1 && base_idx <= ntime) {
+  if (!is.null(scaled_base_override)) {
+    scaled_base <- scaled_base_override
+    valid <- is.finite(base_rate) & is.finite(scaled_base)
+    if (any(valid)) {
+      x <- base_rate[valid]
+      y <- scaled_base[valid]
+      plot(x, y, pch = 16, cex = 0.4,
+           xlab = "Original (Year 2000)", ylab = "Scaled (Year 2000)",
+           main = paste(crop, "- Scatter Year", base_year))
+      abline(0, 1, col = "red", lwd = 2)
+      if (length(x) > 1 && sd(x) > 0 && sd(y) > 0) {
+        cor_val <- cor(x, y)
+      } else {
+        cor_val <- NA_real_
+      }
+      rmse <- sqrt(mean((y - x)^2))
+      bias <- mean(y - x)
+      legend("topleft",
+             legend = c(paste("N =", length(x)),
+                        sprintf("cor = %.3f", cor_val),
+                        sprintf("RMSE = %.2f", rmse),
+                        sprintf("Bias = %.2f", bias)),
+             bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid data for base-year scatter")
+    }
+  } else if (base_idx >= 1 && base_idx <= ntime) {
     scaled_base <- scaled_data[, , base_idx]
     valid <- is.finite(base_rate) & is.finite(scaled_base)
     if (any(valid)) {
@@ -261,10 +288,30 @@ plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, 
 # with quantile legend. Returns the count of valid relative-change cells
 # (preserved from the original code where it was assigned but unused).
 # ----------------------------------------------------------------------------
-plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year, crop) {
+plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year, crop,
+                                      scaled_base_override = NULL) {
   ntime <- dim(scaled_data)[3]
   valid_rel_count <- 0
-  if (base_idx >= 1 && base_idx <= ntime) {
+  if (!is.null(scaled_base_override)) {
+    scaled_base <- scaled_base_override
+    scaled_last <- scaled_data[, , ntime]
+    valid_rel <- is.finite(scaled_base) & is.finite(scaled_last) & scaled_base > 0
+    if (any(valid_rel)) {
+      rel_change <- scaled_last[valid_rel] / scaled_base[valid_rel]
+      valid_rel_count <- length(rel_change)
+      hist(rel_change, breaks = 40, main = paste(crop, "- Rel. Change", end_year, "vs", base_year),
+           xlab = "Relative change (last/base)", col = "grey")
+      stats <- quantile(rel_change, probs = c(0.05, 0.5, 0.95))
+      abline(v = 1, col = "red", lwd = 2, lty = 2)
+      legend("topright",
+             legend = c(sprintf("N = %d", length(rel_change)),
+                        sprintf("mean = %.2f", mean(rel_change)),
+                        sprintf("p05/50/95 = %.2f / %.2f / %.2f", stats[1], stats[2], stats[3])),
+             bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid relative changes")
+    }
+  } else if (base_idx >= 1 && base_idx <= ntime) {
     scaled_base <- scaled_data[, , base_idx]
     scaled_last <- scaled_data[, , ntime]
     valid_rel <- is.finite(scaled_base) & is.finite(scaled_last) & scaled_base > 0
@@ -303,9 +350,50 @@ plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year
 # byte-for-byte means not adding any.
 # ----------------------------------------------------------------------------
 plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
-                                  sample_locations, crop) {
+                                  sample_locations, crop,
+                                  base_timeseries_override = NULL) {
   ntime <- dim(timeseries)[3]
-  if (base_idx >= 1 && base_idx <= ntime) {
+  if (!is.null(base_timeseries_override)) {
+    ts_base <- base_timeseries_override
+    valid_ratio <- is.finite(base_rate) & is.finite(ts_base) & base_rate > 0.1 & ts_base > 0.1
+
+    if (any(valid_ratio)) {
+      ratio_map <- array(NA, dim = dim(base_rate))
+      ratio_map[valid_ratio] <- base_rate[valid_ratio] / ts_base[valid_ratio]
+
+      ratio_capped <- ratio_map
+      ratio_capped[ratio_capped > 5] <- 5
+      ratio_capped[ratio_capped < 0.2] <- 0.2
+
+      data_plot <- ratio_capped
+      valid_data <- data_plot[is.finite(data_plot)]
+
+      if (length(valid_data) > 0) {
+        zlim <- c(0.2, 5)
+
+        col_ramp <- colorRampPalette(c("#2166ac", "#4393c3", "#92c5de", "#d1e5f0",
+                                        "#f7f7f7",
+                                        "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
+
+        image.plot(lon, lat, data_plot,
+                   main = paste(crop, "- Spatial/TS Ratio (Year 2000)"),
+                   xlab = "Longitude", ylab = "Latitude",
+                   col = col_ramp,
+                   zlim = zlim,
+                   ylim = c(-65, 90))
+
+        n_mismatch <- sum(abs(ratio_map - 1) > 0.5, na.rm = TRUE)
+        n_total <- sum(valid_ratio)
+        pct_mismatch <- 100 * n_mismatch / n_total
+        print(paste("Base/TS mismatch: ", n_mismatch, " cells (",
+                    round(pct_mismatch, 1), "%) differ by >50%", sep = ""))
+      } else {
+        plot.new(); text(0.5, 0.5, "No valid ratio data")
+      }
+    } else {
+      plot.new(); text(0.5, 0.5, "No valid ratio data")
+    }
+  } else if (base_idx >= 1 && base_idx <= ntime) {
     ts_base <- timeseries[, , base_idx]
 
     valid_ratio <- is.finite(base_rate) & is.finite(ts_base) & base_rate > 0.1 & ts_base > 0.1
@@ -448,7 +536,8 @@ plot_sample_timeseries <- function(base_rate, scaled_data, timeseries, lon, lat,
 # timeseries-base vs timeseries-last, and per-cell change deltas.
 # ----------------------------------------------------------------------------
 plot_distribution_histograms <- function(base_rate, scaled_data, timeseries,
-                                         base_idx, base_year, end_year, crop) {
+                                         base_idx, base_year, end_year, crop,
+                                         base_timeseries_override = NULL) {
   ntime <- dim(scaled_data)[3]
 
   base_vals <- base_rate[is.finite(base_rate) & base_rate > 0]
@@ -472,47 +561,62 @@ plot_distribution_histograms <- function(base_rate, scaled_data, timeseries,
     plot.new(); text(0.5, 0.5, "No data")
   }
 
-  ts_base_vals <- timeseries[, , base_idx][is.finite(timeseries[, , base_idx]) & timeseries[, , base_idx] > 0]
-  ts_last_vals <- timeseries[, , ntime][is.finite(timeseries[, , ntime]) & timeseries[, , ntime] > 0]
-
-  if (length(ts_base_vals) > 0 && length(ts_last_vals) > 0) {
-    x_range <- range(c(ts_base_vals, ts_last_vals), na.rm = TRUE)
-    breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
-
-    hist(ts_base_vals, breaks = breaks_seq, col = rgb(0, 0.6, 0, 0.5),
-         main = paste("Original TS"),
-         xlab = "N Rate (kg/ha)", ylab = "Frequency",
-         xlim = x_range)
-    hist(ts_last_vals, breaks = breaks_seq, col = rgb(1, 0.5, 0, 0.5), add = TRUE)
-
-    legend("topright",
-           legend = c(paste("TS", base_year), paste("TS", end_year)),
-           fill = c(rgb(0, 0.6, 0, 0.5), rgb(1, 0.5, 0, 0.5)),
-           cex = 0.8, bty = "n")
-  } else {
-    plot.new(); text(0.5, 0.5, "No data")
+  ts_base_for_diag <- NULL
+  if (!is.null(base_timeseries_override)) {
+    ts_base_for_diag <- base_timeseries_override
+  } else if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
+    ts_base_for_diag <- timeseries[, , base_idx]
   }
 
-  change_scaled <- (scaled_data[, , ntime] - base_rate)[is.finite(scaled_data[, , ntime] - base_rate)]
-  change_ts <- (timeseries[, , ntime] - timeseries[, , base_idx])[is.finite(timeseries[, , ntime] - timeseries[, , base_idx])]
+  if (!is.null(ts_base_for_diag)) {
+    ts_base_vals <- ts_base_for_diag[is.finite(ts_base_for_diag) & ts_base_for_diag > 0]
+    ts_last_vals <- timeseries[, , ntime][is.finite(timeseries[, , ntime]) & timeseries[, , ntime] > 0]
 
-  if (length(change_scaled) > 0 && length(change_ts) > 0) {
-    x_range <- range(c(change_scaled, change_ts), na.rm = TRUE)
-    breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
+    if (length(ts_base_vals) > 0 && length(ts_last_vals) > 0) {
+      x_range <- range(c(ts_base_vals, ts_last_vals), na.rm = TRUE)
+      breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
 
-    hist(change_scaled, breaks = breaks_seq, col = rgb(0.5, 0, 0.5, 0.5),
-         main = paste("Changes:", end_year, "-", base_year),
-         xlab = "Change in N Rate (kg/ha)", ylab = "Frequency",
-         xlim = x_range)
-    hist(change_ts, breaks = breaks_seq, col = rgb(0.7, 0.7, 0, 0.5), add = TRUE)
-    abline(v = 0, col = "black", lwd = 2, lty = 2)
+      hist(ts_base_vals, breaks = breaks_seq, col = rgb(0, 0.6, 0, 0.5),
+           main = paste("Original TS"),
+           xlab = "N Rate (kg/ha)", ylab = "Frequency",
+           xlim = x_range)
+      hist(ts_last_vals, breaks = breaks_seq, col = rgb(1, 0.5, 0, 0.5), add = TRUE)
 
-    legend("topright",
-           legend = c("Scaled change", "TS change"),
-           fill = c(rgb(0.5, 0, 0.5, 0.5), rgb(0.7, 0.7, 0, 0.5)),
-           cex = 0.8, bty = "n")
+      legend("topright",
+             legend = c(paste("TS", base_year), paste("TS", end_year)),
+             fill = c(rgb(0, 0.6, 0, 0.5), rgb(1, 0.5, 0, 0.5)),
+             cex = 0.8, bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No data")
+    }
   } else {
-    plot.new(); text(0.5, 0.5, "No data")
+    plot.new(); text(0.5, 0.5, "Base year outside range")
+  }
+
+  if (!is.null(ts_base_for_diag)) {
+    change_scaled <- (scaled_data[, , ntime] - base_rate)[is.finite(scaled_data[, , ntime] - base_rate)]
+    change_ts <- (timeseries[, , ntime] - ts_base_for_diag)[is.finite(timeseries[, , ntime] - ts_base_for_diag)]
+
+    if (length(change_scaled) > 0 && length(change_ts) > 0) {
+      x_range <- range(c(change_scaled, change_ts), na.rm = TRUE)
+      breaks_seq <- seq(x_range[1], x_range[2], length.out = 30)
+
+      hist(change_scaled, breaks = breaks_seq, col = rgb(0.5, 0, 0.5, 0.5),
+           main = paste("Changes:", end_year, "-", base_year),
+           xlab = "Change in N Rate (kg/ha)", ylab = "Frequency",
+           xlim = x_range)
+      hist(change_ts, breaks = breaks_seq, col = rgb(0.7, 0.7, 0, 0.5), add = TRUE)
+      abline(v = 0, col = "black", lwd = 2, lty = 2)
+
+      legend("topright",
+             legend = c("Scaled change", "TS change"),
+             fill = c(rgb(0.5, 0, 0.5, 0.5), rgb(0.7, 0.7, 0, 0.5)),
+             cex = 0.8, bty = "n")
+    } else {
+      plot.new(); text(0.5, 0.5, "No data")
+    }
+  } else {
+    plot.new(); text(0.5, 0.5, "Base year outside range")
   }
 }
 
@@ -524,10 +628,22 @@ plot_distribution_histograms <- function(base_rate, scaled_data, timeseries,
 # coloring by base-rate quartile. Prints analysis stats to the console.
 # ----------------------------------------------------------------------------
 plot_outlier_scatter <- function(base_rate, scaled_data, timeseries,
-                                 base_idx, base_year, end_year) {
+                                 base_idx, base_year, end_year,
+                                 base_timeseries_override = NULL) {
   ntime <- dim(scaled_data)[3]
 
-  scaling_factors <- (timeseries[, , ntime] / timeseries[, , base_idx])
+  if (!is.null(base_timeseries_override)) {
+    scaling_factors <- (timeseries[, , ntime] / base_timeseries_override)
+  } else if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
+    scaling_factors <- (timeseries[, , ntime] / timeseries[, , base_idx])
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Base year outside range")
+    plot.new()
+    text(0.5, 0.5, "Base year outside range")
+    return(invisible(NULL))
+  }
+
   final_values <- scaled_data[, , ntime]
 
   sf_flat <- as.vector(scaling_factors)
