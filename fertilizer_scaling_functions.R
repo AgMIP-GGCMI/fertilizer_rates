@@ -341,6 +341,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
                                    base_timeseries = NULL) {
   print(paste("Using scaling method:", method))
   lambda_max_rate <- 500
+  delayed_anchor_threshold <- 1
   
   # get dimensions
   nlon <- dim(timeseries)[1]
@@ -372,6 +373,35 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     # invalid, while zero-base cells copy the raw TS trajectory.
     valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
 
+    # For positive-base cells where TS(base_year) is close to zero, use a
+    # delayed anchor year y* (first t >= base year with TS(t) >= threshold)
+    # and scale by TS(t)/TS(y*). This avoids undefined lambda behavior at
+    # TS(base_year) ~= 0 while preserving the base-map amplitude at y*.
+    delayed_anchor_cells <- is.finite(base_rate) & base_rate > 0 &
+      is.finite(base_timeseries) & base_timeseries < delayed_anchor_threshold
+    delayed_anchor_value <- array(NA_real_, dim = c(nlon, nlat))
+
+    if (any(delayed_anchor_cells)) {
+      # Always search the full available series for the first anchor year with
+      # TS >= threshold. For future scenarios base_idx is already NA so this
+      # makes no difference there; for histsoc it is essential because the
+      # base year (2000) may itself be zero while earlier years are positive.
+      for (i in 1:nlon) {
+        for (j in 1:nlat) {
+          if (delayed_anchor_cells[i, j]) {
+            ts_cell <- timeseries[i, j, 1:ntimes]
+            cand <- which(is.finite(ts_cell) & ts_cell >= delayed_anchor_threshold)
+            if (length(cand) > 0) {
+              delayed_anchor_value[i, j] <- ts_cell[cand[1]]
+            }
+          }
+        }
+      }
+    }
+    delayed_anchor_ready <- delayed_anchor_cells &
+      is.finite(delayed_anchor_value) & delayed_anchor_value > 0
+    delayed_anchor_unresolved <- delayed_anchor_cells & !delayed_anchor_ready
+
     # Lambda method: see compute_lambda and scale_lambda_timestep.
     lambda <- compute_lambda(base_rate, base_timeseries, valid_base_lambda)
 
@@ -380,6 +410,32 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
         scaled_data[, , t] <- scale_lambda_timestep(
           base_rate, timeseries[, , t], base_timeseries, valid_base_lambda, lambda
         )
+
+        # Apply delayed-anchor fallback for TS(base_year) < threshold.
+        if (any(delayed_anchor_ready)) {
+          ts_t <- timeseries[, , t]
+          fallback_cells <- delayed_anchor_ready & is.finite(ts_t)
+          if (any(fallback_cells)) {
+            slice <- scaled_data[, , t]
+            slice[fallback_cells] <- base_rate[fallback_cells] *
+              (ts_t[fallback_cells] / delayed_anchor_value[fallback_cells])
+            slice[!is.na(slice) & slice < 0] <- 0
+            scaled_data[, , t] <- slice
+          }
+        }
+
+        # If no anchor year (TS>=threshold) exists for a delayed-anchor cell,
+        # fall back to raw TS(t) so values do not remain NA indefinitely.
+        if (any(delayed_anchor_unresolved)) {
+          ts_t <- timeseries[, , t]
+          unresolved_cells <- delayed_anchor_unresolved & is.finite(ts_t)
+          if (any(unresolved_cells)) {
+            slice <- scaled_data[, , t]
+            slice[unresolved_cells] <- ts_t[unresolved_cells]
+            slice[!is.na(slice) & slice < 0] <- 0
+            scaled_data[, , t] <- slice
+          }
+        }
       }, lambda_timestep_error = function(e) {
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
         cat(sprintf("  Message: %s\n", e$message))
@@ -709,6 +765,27 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
   plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, base_year, end_year,
                        base_timeseries_override = base_timeseries_override)
+
+  # Add explicit NA-provenance masks to diagnose where output NAs come from.
+  ts_base_for_diag <- NULL
+  if (!is.null(base_timeseries_override)) {
+    ts_base_for_diag <- base_timeseries_override
+  } else if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
+    ts_base_for_diag <- timeseries[, , base_idx]
+  }
+
+  if (!is.null(ts_base_for_diag)) {
+    plot_na_provenance_masks(
+      base_rate = base_rate,
+      scaled_t = scaled_data[, , 1],
+      ts_base = ts_base_for_diag,
+      ts_t = timeseries[, , 1],
+      lon = lon,
+      lat = lat,
+      crop = crop,
+      year_label = start_year
+    )
+  }
 
   dev.off()
   

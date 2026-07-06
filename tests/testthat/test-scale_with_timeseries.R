@@ -238,6 +238,94 @@ test_that("scale_with_timeseries applies hard 500 kgN/ha cap for lambda method",
   expect_equal(result[, , 3], matrix(c(100, 500, 500, 500), nrow = 2))
 })
 
+test_that("lambda delayed-anchor fallback applies when TS(base_year) < 1, anchor after base year", {
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 4))
+
+  # Cell [1,1]: base_year ts is 0 (<1), anchor from full series is t=3 (value 2).
+  ts[1, 1, ] <- c(0.5, 0, 2, 4)
+  # Other cells: regular positive series to keep default lambda behavior active.
+  ts[2, 1, ] <- c(2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 1999,
+      start_year = 1998,
+      end_year = 2001,
+      method = "lambda"
+    )
+  )
+
+  # Fallback uses base_rate * TS(t)/TS(anchor), anchor value = 0.5 at t=1
+  # (first value >= 0 that is the first positive in the series).
+  # Actually anchor threshold is 1, and ts[1,1,] = c(0.5, 0, 2, 4):
+  # first value >= 1 is at t=3 (value 2).
+  expect_equal(result[1, 1, 1], 25)   # 100 * 0.5/2
+  expect_equal(result[1, 1, 2], 0)    # 100 * 0/2
+  expect_equal(result[1, 1, 3], 100)  # 100 * 2/2
+  expect_equal(result[1, 1, 4], 200)  # 100 * 4/2
+})
+
+test_that("lambda delayed-anchor finds anchor BEFORE base_year for histsoc-style series", {
+  # Simulates histsoc: TS has positive values in early years, zero at base_year.
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 5))
+
+  # Cell [1,1]: positive in early period (t=1,2 = pre-2000), zero at base year (t=3), more zeros after.
+  ts[1, 1, ] <- c(3, 6, 0, 0, 0)  # anchor should be t=1, value=3
+  ts[2, 1, ] <- c(2, 2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 2000,    # corresponds to t=3
+      start_year = 1998,
+      end_year = 2002,
+      method = "lambda"
+    )
+  )
+
+  # anchor = first t with TS >= 1 in full series = t=1, value=3
+  # scaled(t) = base_rate * TS(t)/3
+  expect_equal(result[1, 1, 1], 100)   # 100 * 3/3
+  expect_equal(result[1, 1, 2], 200)   # 100 * 6/3
+  expect_equal(result[1, 1, 3], 0)     # 100 * 0/3
+  expect_equal(result[1, 1, 4], 0)     # 100 * 0/3
+  expect_equal(result[1, 1, 5], 0)     # 100 * 0/3
+})
+
+test_that("lambda delayed-anchor unresolved cells fall back to raw TS(t)", {
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 5))
+
+  # Cell [1,1]: TS(base_year)=0 and no value >= 1 in entire series.
+  ts[1, 1, ] <- c(0, 0.2, 0, 0.4, 0)
+  ts[2, 1, ] <- c(2, 2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 2000,
+      start_year = 1998,
+      end_year = 2002,
+      method = "lambda"
+    )
+  )
+
+  expect_equal(as.numeric(result[1, 1, ]), as.numeric(ts[1, 1, ]))
+  expect_true(all(is.finite(result[1, 1, ])))
+})
+
 test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {
   fx <- make_harness_fixture()
   local_mocked_globals(

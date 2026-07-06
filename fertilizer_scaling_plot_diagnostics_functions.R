@@ -757,3 +757,75 @@ plot_outlier_scatter <- function(base_rate, scaled_data, timeseries,
     text(0.5, 0.5, "No outliers to display")
   }
 }
+
+# ----------------------------------------------------------------------------
+# plot_na_provenance_masks
+# ----------------------------------------------------------------------------
+# Renders a 2x2 diagnostics page with binary masks to explain why cells are NA
+# in the final scaled output for a selected year.
+# ----------------------------------------------------------------------------
+plot_na_provenance_masks <- function(base_rate, scaled_t, ts_base, ts_t,
+                                     lon, lat, crop, year_label) {
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par), add = TRUE)
+
+  par(mfrow = c(2, 3), mar = c(4, 4, 3, 6))
+
+  plot_binary_mask <- function(mask, title, detail) {
+    mask_num <- array(NA_real_, dim = dim(base_rate))
+    mask_num[] <- 0
+    mask_num[mask] <- 1
+    image.plot(lon, lat, mask_num,
+               main = paste0(title, "\n", detail),
+               xlab = "Longitude", ylab = "Latitude",
+               col = c("#eeeeee", "#b2182b"),
+               zlim = c(0, 1),
+               ylim = c(-65, 90),
+               legend.mar = 4,
+               axis.args = list(at = c(0, 1), labels = c("no", "yes")))
+  }
+
+  base_na <- !is.finite(base_rate)
+  base_pos <- is.finite(base_rate) & base_rate > 0
+  ts_base_na <- base_pos & !is.finite(ts_base)
+  ts_base_nonpos <- base_pos & is.finite(ts_base) & ts_base <= 0
+  ts_t_na_given_valid_base <- base_pos & is.finite(ts_base) & ts_base > 0 & !is.finite(ts_t)
+  out_na_basepos <- base_pos & !is.finite(scaled_t)
+  proc_introduced_na <- base_pos & !is.finite(scaled_t) &
+    is.finite(ts_base) & ts_base > 0 & is.finite(ts_t)
+
+  n_total <- length(base_rate)
+  n_base_pos <- sum(base_pos, na.rm = TRUE)
+  pct_total <- function(mask) sprintf("n=%d (%.1f%% of all cells)",
+                                      sum(mask, na.rm = TRUE),
+                                      100 * sum(mask, na.rm = TRUE) / n_total)
+  pct_basepos <- function(mask) {
+    if (n_base_pos == 0) return("n=0 (NA% of base>0)")
+    sprintf("n=%d (%.1f%% of base>0)", sum(mask, na.rm = TRUE),
+            100 * sum(mask, na.rm = TRUE) / n_base_pos)
+  }
+
+  plot_binary_mask(base_na,
+                   paste(crop, "- Input mask: base map NA"),
+                   pct_total(base_na))
+
+  plot_binary_mask(ts_base_na,
+                   paste(crop, "- Input mask: base>0 and TS(base) is NA"),
+                   pct_basepos(ts_base_na))
+
+  plot_binary_mask(ts_base_nonpos,
+                   paste(crop, "- Input mask: base>0 and TS(base)<=0"),
+                   pct_basepos(ts_base_nonpos))
+
+  plot_binary_mask(ts_t_na_given_valid_base,
+                   paste(crop, "- Input mask: base>0, TS(base)>0, TS(year) NA"),
+                   pct_basepos(ts_t_na_given_valid_base))
+
+  plot_binary_mask(out_na_basepos,
+                   paste(crop, "- Output mask: final NA on base>0"),
+                   paste("Year", year_label, "-", pct_basepos(out_na_basepos)))
+
+  plot_binary_mask(proc_introduced_na,
+                   paste(crop, "- Sanity: processing-introduced NA"),
+                   pct_basepos(proc_introduced_na))
+}
