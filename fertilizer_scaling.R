@@ -54,9 +54,9 @@
 #   3. Load time series data for corresponding functional group
 #   4. For each method in scaling_methods (production: lambda only):
 #      a. Apply scaling to spatial pattern
-#      b. Create diagnostic plots with outlier analysis
-#      c. Write output NetCDF files with method identifier
-#   5. Run validation tests
+#      b. Run validation tests
+#      c. Create diagnostic plots with outlier analysis
+#      d. Write output NetCDF files with method identifier
 #
 # Author: Generated for AgMIP-GGCMI
 # Date: 2026-01-15

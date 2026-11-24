@@ -329,6 +329,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   end_year: Last year in time series
 #   method: Scaling method - "relative" (argument default) or "lambda"
 #           (production; main() passes each entry of scaling_methods)
+#   base_timeseries: Optional [lon, lat] base-year slice used instead of
+#           timeseries[, , base_year] (main() passes the historical slice
+#           for future scenarios, whose series starts in 2015)
 #
 # Returns:
 #   Scaled data [lon, lat, time]
@@ -375,7 +378,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
 
     # For positive-base cells where TS(base_year) is close to zero, use a
-    # delayed anchor year y* (first t >= base year with TS(t) >= threshold)
+    # delayed anchor year y* (first t in the loaded series with TS(t) >= threshold)
     # and scale by TS(t)/TS(y*). This avoids undefined lambda behavior at
     # TS(base_year) ~= 0 while preserving the base-map amplitude at y*.
     delayed_anchor_cells <- is.finite(base_rate) & base_rate > 0 &
@@ -808,7 +811,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 #
 # Details:
 #   - For histsoc: scales and writes 1850–2014
-#   - For future: reads only the year-2000 slice of the historical time series
+#   - For future: reads only the base_year (2000) slice of the historical time series
 #     (the scaling baseline) plus the 2015–2100 future series; scales and
 #     writes 2015–2100
 #   - Applies each method in scaling_methods (production: lambda only)
