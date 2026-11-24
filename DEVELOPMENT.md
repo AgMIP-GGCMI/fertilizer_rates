@@ -111,7 +111,7 @@ Run the full test suite (unit tests + PNG regression tests):
 
     Rscript tests/testthat.R
 
-The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. Each scenario takes ~30–40 seconds, so the full suite takes a few minutes.
+The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. Each scenario takes ~30–40 seconds, so the full suite takes a few minutes. The renders enable both scaling methods (relative and lambda) even though production runs lambda only, so the baseline PNGs and NetCDFs include relative-method and relative-vs-lambda comparison output.
 
 To skip the slow tests during rapid iteration:
 
