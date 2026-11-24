@@ -9,8 +9,11 @@
 # renv.lock.
 #
 # lintr: used through the .lintr config file and the editor.
+# shiny, diffviewer: used by testthat::snapshot_review() to review PNG snapshot changes.
 # ============================================================================
 
 if (FALSE) {
   library(lintr)
+  library(shiny)
+  library(diffviewer)
 }
