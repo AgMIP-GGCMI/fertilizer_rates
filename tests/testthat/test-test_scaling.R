@@ -205,7 +205,7 @@ test_that("lambda: random data that breaks relative does NOT cause lambda to fai
                                 fx$start_year, fx$base_year, method = "lambda")
   # The same random fixture causes multiple inner failures under the relative
   # method (see test "relative: random data fails base-year, trends, and
-  # relative-changes"). Lambda treats all three as informational (printed, not asserted), so
+  # relative-changes"). Lambda only prints the base-year and trend correlations and skips the relative-changes check, so
   # n_failures must be 0 here. This contrast is what proves lambda's
   # "informational only" semantics.
   expect_equal(r$n_failures, 0)
