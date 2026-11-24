@@ -15,7 +15,15 @@ Each file is a 720 × 360 × 3 (lon × lat × time) slice of the full 2015–210
 
 The baselines are sliced from the full production outputs at `data/outputs/ssp126soc-adapt/<method>/n-fertilizer_mai_image_gfdl-esm4_ssp126_<method>_annual_2015_2100.nc`. To regenerate after an intentional change to the script's output:
 
-1. Run `Rscript fertilizer_scaling.R` (or just the `main("mai", "ssp126", "image", "gfdl-esm4")` invocation) to produce fresh outputs under `data/outputs/`.
+1. Produce fresh outputs by running, from the repo root:
+
+   ```bash
+   Rscript fertilizer_scaling.R mai ssp126 image gfdl-esm4
+   ```
+
+   Or, in an R session started in the repo root, run `source("fertilizer_scaling_settings.R")`, then `source("fertilizer_scaling_functions.R")`, then `main("mai", "ssp126", "image", "gfdl-esm4")`.
+
+   Either way, the outputs land under `data/outputs/` when `FERT_OUTPUT_BASE_PATH` points there, as in the `.Renviron` described in [Input data and paths](../../../DEVELOPMENT.md#input-data-and-paths). If the variable is unset, they go to the PIK production path.
 2. Re-slice both methods with the snippet below (run from the repo root):
 
    ```r
