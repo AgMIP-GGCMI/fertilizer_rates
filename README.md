@@ -9,12 +9,21 @@ R scripts that prepare gridded nitrogen-fertilizer application rates for the agr
 - a **spatial baseline** at 5 arc-minute resolution from Mueller et al. (year-2000 sub-national application rates), aggregated up to 0.5°, and
 - a **temporal time series** at 0.5° from ISIMIP3b's socioeconomic inputs, indexed by crop functional group (`fertl_c3ann`, `fertl_c4ann`, `fertl_c3nfx`, `fertl_c3per`, `fertl_c4per`).
 
-Two scaling methods are run for every (crop, scenario) and produce parallel `relative/` and `lambda/` output trees:
+The scaling method used in production is **lambda**, applied per grid cell:
 
-1. **Relative change (default):** `scaled[t] = base_rate × (timeseries[t] / timeseries[2000])`. Preserves the spatial pattern and applies the temporal trend as a multiplicative factor.
-2. **Lambda:** per-cell difference from the base year, with a `√(F_ts_base / F_ref_base)` exponent that dampens amplification when the timeseries baseline is much lower than the spatial baseline.
+`scaled[t] = base_rate × [1 + (timeseries[t] − timeseries[2000]) / base_rate × (base_rate / timeseries[2000])^λ]`
 
-Scenarios cover historical (`histsoc`, 1850–2014) and futures (each SSP × IAM × GCM combination, 2015–2100). The production sweep over all 15 crops × 3 SSPs × 2 IAMs × 5 GCMs is invoked as a bash loop — see the commented-out template at the top of `fertilizer_scaling.R`. Each run also emits per-method diagnostic PDFs and a `compare_relative_lambda` cross-method summary PDF.
+With λ = 1 this reduces to the relative-change method below. Where the timeseries baseline is lower than the spatial baseline, λ = √(timeseries[2000] / base_rate) < 1, which dampens how strongly timeseries changes are amplified. In addition:
+
+- results are clamped to 0–500 kg ha⁻¹ yr⁻¹;
+- cells with a zero spatial baseline take the raw timeseries;
+- cells whose year-2000 timeseries value is below 1 kg ha⁻¹ yr⁻¹ are instead scaled by `timeseries[t] / timeseries[y*]`, where y* is the first year of the run's own series (1850–2014 for histsoc, 2015–2100 for futures) in which the timeseries reaches 1. For histsoc, y* can therefore fall before 2000. If the series never reaches 1, the cell takes the raw timeseries.
+
+Outputs go to a `lambda/` output tree.
+
+An alternative **relative-change** method, `scaled[t] = base_rate × (timeseries[t] / timeseries[2000])`, is also implemented. It preserves the spatial pattern and applies the temporal trend as a multiplicative factor, writing to a parallel `relative/` tree. It is not run in production, but can be enabled for comparison through `scaling_methods` (see [Running one job](#running-one-job)).
+
+Scenarios cover historical (`histsoc`, 1850–2014) and futures (each SSP × IAM × GCM combination, 2015–2100). The production sweep over all 15 crops × (histsoc + 3 SSPs × 2 IAMs × 5 GCMs) runs as a SLURM array job (see [Full production sweep](#full-production-sweep-pik-cluster)). Each run also writes a diagnostics PDF per enabled method and, when both methods are enabled, a relative-vs-lambda comparison PDF.
 
 ## Usage
 
@@ -57,7 +66,7 @@ Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
 
 Only the argument count and `crop` are checked up front. A mistyped scenario, IAM, or GCM prints `Time series file does not exist: <path>`, writes nothing, and still exits with status 0, so a SLURM task with a typo looks successful. Check the output for `does not exist` lines (see [Missing inputs](DEVELOPMENT.md#missing-inputs)).
 
-Which scaling methods run is set by `scaling_methods` in [fertilizer_scaling_settings.R](fertilizer_scaling_settings.R). It currently lists only `"lambda"`, so only `lambda/` outputs are written; set it to `c("relative", "lambda")` to also get `relative/` outputs and the relative-vs-lambda comparison PDF.
+Which scaling methods run is set by `scaling_methods` in [fertilizer_scaling_settings.R](fertilizer_scaling_settings.R). It is set to `"lambda"` only (the production configuration), so only `lambda/` outputs are written; set it to `c("relative", "lambda")` to also get `relative/` outputs and the relative-vs-lambda comparison PDF.
 
 ### Outputs
 
