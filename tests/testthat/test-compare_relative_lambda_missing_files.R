@@ -1,7 +1,7 @@
 # tests/testthat/test-compare_relative_lambda_missing_files.R
 #
 # Covers the two file-existence early-returns at the top of
-# compare_relative_lambda() (lines 955-956 and 959-960 in
+# compare_relative_lambda() ("Relative file not found" and "Lambda file not found" checks in
 # fertilizer_scaling_functions.R).
 
 test_that("compare_relative_lambda returns early when relative file is missing", {

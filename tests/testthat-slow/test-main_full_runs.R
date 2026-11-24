@@ -18,7 +18,7 @@ setup_full_run <- function(envir = parent.frame()) {
   # compare_relative_lambda's plot_density_heatmap bins 12 grid cells into
   # 40x40 bins; each point lands in a unique bin, so range(z) = c(1,1) and
   # image.plot dies. The crash is caught by the tryCatch handler, but that
-  # would accidentally cover lines 1353-1358 from these end-to-end tests.
+  # would accidentally cover the tryCatch error handler in compare_relative_lambda() from these end-to-end tests.
   # Stub it out so coverage of the handler comes from the targeted test at
   # tests/testthat/test-compare_relative_lambda_trycatch.R.
   # Under the production setting (lambda only) main() skips compare_relative_lambda(), so the stub only matters when both methods are enabled.
@@ -72,7 +72,7 @@ test_that("main() falls back to fertl_<type> alt name when funcgroup uses <type>
   lat <- seq(-40, by = -10, length.out = 3)
 
   # Override crop_to_funcgroup so mai maps to the non-"fertl_"-prefixed
-  # form, forcing the else branch on line 757 (which builds line 758's
+  # form, forcing the else branch in main() (the `startsWith(funcgroup, "fertl_")` check fails, so the else branch builds the
   # alt_name = "fertl_c4ann").
   local_mocked_globals(
     crop_to_funcgroup = modifyList(crop_to_funcgroup, list(mai = "c4ann_fertl"))
@@ -86,7 +86,7 @@ test_that("main() falls back to fertl_<type> alt name when funcgroup uses <type>
   histsoc_dir <- file.path(p$ts, "histsoc")
   dir.create(histsoc_dir, recursive = TRUE)
   # The TS file has the "fertl_c4ann" variable, so main() must build
-  # alt_name = "fertl_c4ann" via line 758 and find it.
+  # alt_name = "fertl_c4ann" via main()'s alt_name fallback and find it.
   make_ts_nc(
     file.path(histsoc_dir, "n-fertilizer-5crops_histsoc_annual_1850_2014.nc"),
     var_name = "fertl_c4ann",
