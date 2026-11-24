@@ -4,7 +4,7 @@ Developer-facing companion to [README.md](README.md). Read that for what the pro
 
 ## Devcontainer setup
 
-This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the repo's pinned dependencies pre-installed. The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
+This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts and tests use pre-installed (the current CRAN versions at image build time, not the versions pinned in `renv.lock`). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
 
 ### Prerequisites
 
@@ -145,7 +145,7 @@ Then commit the updated snapshot files alongside the code change that produced t
 
 ### Environment caveat
 
-Byte-identical PNG output is guaranteed only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image + pinned apt cairo/png libs + `renv`-locked R packages). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
+Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and CRAN R packages current when the image was built — a rebuild can pick up newer versions). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
 
 ## Coverage
 
