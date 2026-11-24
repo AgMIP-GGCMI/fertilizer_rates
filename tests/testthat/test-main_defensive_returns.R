@@ -1,14 +1,22 @@
 # tests/testthat/test-main_defensive_returns.R
 #
-# Covers main()'s defensive early-returns:
-#   632-633  input 5-min spatial file does not exist
-#   689-690  historical TS file missing for a future scenario
-#   698-700  funcgroup variable not in historical TS file
-#   724-725  histsoc TS file does not exist
-#   765-768  neither funcgroup nor alt_name found in TS file
+# Covers main()'s handling of missing inputs.
 #
-# Each test points main()'s base paths at fresh tempdirs and asserts
-# main() returns NULL silently after printing the relevant error.
+# Early returns (main() prints the message and returns NULL):
+#   - 5-arcmin input file missing        -> "Input file does not exist"
+#   - histsoc TS file missing, histsoc run
+#                                        -> "Time series file does not exist"
+#   - neither funcgroup nor alt_name in the TS file
+#                                        -> "ERROR: Neither ... nor ... found in file"
+#
+# Errors (future scenario; raised by read_timeseries_year_slice()):
+#   - histsoc TS file missing            -> "Time series file does not exist: <path>"
+#   - funcgroup variable missing from the histsoc TS file
+#                                        -> "Variable <funcgroup> not found in time series file"
+#
+# Each test points main()'s base paths at fresh tempdirs. Early-return tests
+# capture main()'s printed output and grep it for the message; error tests
+# wrap main() in expect_error() and match the condition message.
 
 setup_paths <- function(envir = parent.frame()) {
   spatial <- withr::local_tempdir(.local_envir = envir)
