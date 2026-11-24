@@ -327,8 +327,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   base_year: Reference year for scaling (default: 2000)
 #   start_year: First year in time series
 #   end_year: Last year in time series
-#   method: Scaling method - "relative" (argument default) or "lambda"
-#           (production; main() passes each entry of scaling_methods)
+#   method: Scaling method, "relative" or "lambda". Defaults to "relative",
+#           which is not the production method; main() always passes it
+#           explicitly (each entry of scaling_methods; production: "lambda")
 #   base_timeseries: Optional [lon, lat] base-year slice used instead of
 #           timeseries[, , base_year] (main() passes the historical slice
 #           for future scenarios, whose series starts in 2015)
@@ -620,7 +621,9 @@ check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
 #   base_rate: Original spatial pattern [lon, lat]
 #   start_year: First year in time series
 #   base_year: Reference year for scaling
-#   method: Scaling method ("relative" or "lambda")
+#   method: Scaling method, "relative" or "lambda". Defaults to "relative",
+#           which is not the production method; main() always passes it
+#           explicitly
 #
 # Tests:
 #   1. Base year values match original pattern (relative method only)
@@ -696,6 +699,9 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 #   crop: Crop name
 #   scenario: Scenario name
 #   output_dir: Directory to save plots
+#   method: Scaling method, used in the PDF file name and the
+#           original-pattern map title. Defaults to "relative", which is
+#           not the production method; main() always passes it explicitly
 #
 # Creates:
 #   1. Original pattern (year 2000)
