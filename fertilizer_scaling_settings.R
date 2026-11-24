@@ -81,5 +81,5 @@ gcms <- c("gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-
 scaling_methods <- c("lambda")  #c("relative", "lambda")
 
 
-# reference year for relative scaling
+# reference year for scaling (both methods)
 base_year <- 2000

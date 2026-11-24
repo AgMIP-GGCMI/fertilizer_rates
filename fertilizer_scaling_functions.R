@@ -319,15 +319,20 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 # ============================================================================
 # FUNCTION: scale_with_timeseries
 # ============================================================================
-# Scale fertilizer rates using relative change from time series
+# Scale fertilizer rates to a time series using the given method
 #
 # Args:
 #   base_rate: Spatial pattern at 0.5 degree for base year [lon, lat]
 #   timeseries: Temporal data from ISIMIP3b [lon, lat, time]
-#   base_year: Year to use as reference for relative scaling (default: 2000)
+#   base_year: Reference year for scaling (default: 2000)
 #   start_year: First year in time series
 #   end_year: Last year in time series
-#   method: Scaling method - "relative" (default) or "lambda"
+#   method: Scaling method, "relative" or "lambda". Defaults to "relative",
+#           which is not the production method; main() always passes it
+#           explicitly (each entry of scaling_methods; production: "lambda")
+#   base_timeseries: Optional [lon, lat] base-year slice used instead of
+#           timeseries[, , base_year] (main() passes the historical slice
+#           for future scenarios, whose series starts in 2015)
 #
 # Returns:
 #   Scaled data [lon, lat, time]
@@ -374,7 +379,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
 
     # For positive-base cells where TS(base_year) is close to zero, use a
-    # delayed anchor year y* (first t >= base year with TS(t) >= threshold)
+    # delayed anchor year y* (first t in the loaded series with TS(t) >= threshold)
     # and scale by TS(t)/TS(y*). This avoids undefined lambda behavior at
     # TS(base_year) ~= 0 while preserving the base-map amplitude at y*.
     delayed_anchor_cells <- is.finite(base_rate) & base_rate > 0 &
@@ -616,7 +621,9 @@ check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
 #   base_rate: Original spatial pattern [lon, lat]
 #   start_year: First year in time series
 #   base_year: Reference year for scaling
-#   method: Scaling method ("relative" or "lambda")
+#   method: Scaling method, "relative" or "lambda". Defaults to "relative",
+#           which is not the production method; main() always passes it
+#           explicitly
 #
 # Tests:
 #   1. Base year values match original pattern (relative method only)
@@ -692,6 +699,9 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 #   crop: Crop name
 #   scenario: Scenario name
 #   output_dir: Directory to save plots
+#   method: Scaling method, used in the PDF file name and the
+#           original-pattern map title. Defaults to "relative", which is
+#           not the production method; main() always passes it explicitly
 #
 # Creates:
 #   1. Original pattern (year 2000)
@@ -802,13 +812,15 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 # Args:
 #   crop: Crop name (e.g., "mai" for maize)
 #   scenario: "histsoc" (historical) or SSP scenario (e.g., "ssp585")
-#   iam: IAM model name for future scenarios (e.g., "IMAGE")
-#   gcm: GCM name for future scenarios (e.g., "HadGEM2-ES")
+#   iam: IAM for future scenarios, as in the input file names (e.g., "image")
+#   gcm: GCM for future scenarios, as in the input file names (e.g., "gfdl-esm4")
 #
 # Details:
-#   - For histsoc: processes 1850–2014
-#   - For future: combines historical (1850–2014) with future (2015–2100)
-#   - Applies both relative and lambda scaling methods
+#   - For histsoc: scales and writes 1850–2014
+#   - For future: reads only the base_year (2000) slice of the historical time series
+#     (the scaling baseline) plus the 2015–2100 future series; scales and
+#     writes 2015–2100
+#   - Applies each method in scaling_methods (production: lambda only)
 #   - Outputs NetCDF and diagnostic plots
 # ============================================================================
 main <- function(crop, scenario, iam = NULL, gcm = NULL) {

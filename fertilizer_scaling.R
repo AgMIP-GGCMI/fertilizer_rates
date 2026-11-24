@@ -4,7 +4,9 @@
 # 
 # Purpose:
 #   Scale gridded fertilizer application rates from year 2000 baseline
-#   to time series data (1850-2100) using two alternative scaling methods.
+#   to time series data (1850-2100). Production uses the lambda method; a
+#   relative-change method is also implemented. Which methods run is set by
+#   scaling_methods in fertilizer_scaling_settings.R (production: lambda only).
 #
 # Input:
 #   - Spatial patterns: 5 arcmin resolution fertilizer rates for year 2000
@@ -12,14 +14,10 @@
 #
 # Output:
 #   - Scaled fertilizer rates at 0.5 degree resolution for multiple scenarios
-#   - Separate outputs for each scaling method (relative and lambda)
+#   - A separate output tree for each enabled scaling method (lambda/, relative/)
 #
 # Scaling Methods:
-#   1. Relative Change (default):
-#      scaled[t] = base_rate * (timeseries[t] / timeseries[2000])
-#      Preserves spatial patterns while applying temporal trends as multiplicative factors
-#
-#   2. Lambda (precipitation-style adapted for fertilizer):
+#   1. Lambda (precipitation-style adapted for fertilizer; used in production):
 #      scaled[t] = F_ref * [1 + (fert_diff / F_ref_base) * (F_ref_base / F_ts_base)^lambda]
 #      where:
 #        - F_ref = base_rate (spatial baseline at year 2000)
@@ -28,9 +26,19 @@
 #        - fert_diff = timeseries[t] - timeseries[base_year] (difference relative to base year)
 #        - lambda = sqrt(F_ts_base / F_ref_base) if F_ts_base < F_ref_base, else 1
 #      Uses per-cell differences from base year with lambda correction to dampen amplification when
-#      timeseries baseline is lower than spatial baseline
+#      timeseries baseline is lower than spatial baseline. With lambda = 1 this equals method 2.
+#      Additional rules (see scale_with_timeseries):
+#        - results are clamped to 0..500 kg ha-1 yr-1
+#        - cells with base_rate == 0 take the raw timeseries
+#        - cells with base_rate > 0 but F_ts_base < 1 use a delayed anchor:
+#          base_rate * timeseries[t] / timeseries[y*], with y* the first year
+#          of the run's series where timeseries >= 1 (raw timeseries if none)
 #
-#   Method behavior (important for interpreting maps):
+#   2. Relative Change (optional; not run in production):
+#      scaled[t] = base_rate * (timeseries[t] / timeseries[2000])
+#      Preserves spatial patterns while applying temporal trends as multiplicative factors
+#
+#   Method behavior when both are enabled (important for interpreting comparison maps):
 #      The lambda method can produce higher or lower values than the relative method depending on:
 #      - The ratio base_rate / timeseries[base] (spatial vs timeseries baseline)
 #      - The magnitude of changes and lambda exponent value
@@ -44,30 +52,18 @@
 #   1. Load spatial pattern at 5 arcmin (year 2000 baseline)
 #   2. Aggregate to 0.5 degree resolution
 #   3. Load time series data for corresponding functional group
-#   4. For each method (relative and lambda):
+#   4. For each method in scaling_methods (production: lambda only):
 #      a. Apply scaling to spatial pattern
-#      b. Create diagnostic plots with outlier analysis
-#      c. Write output NetCDF files with method identifier
-#   5. Run validation tests
+#      b. Run validation tests
+#      c. Create diagnostic plots with outlier analysis
+#      d. Write output NetCDF files with method identifier
 #
 # Author: Generated for AgMIP-GGCMI
 # Date: 2026-01-15
 # ============================================================================
 
-# for production, run bash loop over crops and scenarios
-# for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#   # Historical scenario
-#   Rscript fertilizer_scaling.R "$crop" histsoc
-#   
-#   # Future scenarios: all combinations of SSP, IAM, GCM
-#   for ssp in ssp126 ssp370 ssp585; do
-#     for iam in image magpie; do
-#       for gcm in gfdl-esm4 ipsl-cm6a-lr mpi-esm1-2-hr mri-esm2-0 ukesm1-0-ll; do
-#         Rscript fertilizer_scaling.R "$crop" "$ssp" "$iam" "$gcm"
-#       done
-#     done
-#   done
-# done
+# Usage and production runs: see the EXECUTION block at the end of this file
+# and the "Usage" section of README.md.
 
 # Libraries, paths, crop mappings, scenario lists, base_year — see file.
 source("fertilizer_scaling_settings.R")
@@ -110,26 +106,20 @@ if (!(crop %in% cropnames)) {
 main(crop, scenario, iam, gcm)
 
 # ============================================================================
-# EXECUTION AND TESTING
+# EXECUTION
 # ============================================================================
-# 
-# QUICK START (single crop, test scenarios):
+#
+# Run from the repo root, one crop and scenario per invocation:
+#   Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]
 #   Rscript fertilizer_scaling.R mai histsoc
 #   Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
+# (iam and gcm are required for future scenarios.)
 #
-# PRODUCTION MODE (all crops, all scenarios):
-#   For all 15 crops individually:
-#     for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#       Rscript fertilizer_scaling.R $crop
-#     done
+# Production (all crops x all scenarios, PIK cluster):
+#   sbatch submit_fertilizer_scaling_full.jcf
 #
-# OUTPUT:
-#   - Scaled NetCDF files: output_base_path/{relative,lambda}/{crop}_{scenario}.nc
-#   - Diagnostic plots: output_base_path/diagnostics/{crop}_{scenario}_*.pdf
-#
-# COMMAND-LINE ARGUMENTS:
-#   arg1: crop name (required, e.g., mai)
-#   arg2: scenario (required: histsoc or an SSP)
+# Argument values, output paths, and file names: see the "Usage" section of
+# README.md.
 #
 # ============================================================================
 

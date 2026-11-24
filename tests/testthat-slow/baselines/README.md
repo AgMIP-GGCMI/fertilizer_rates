@@ -15,7 +15,15 @@ Each file is a 720 × 360 × 3 (lon × lat × time) slice of the full 2015–210
 
 The baselines are sliced from the full production outputs at `data/outputs/ssp126soc-adapt/<method>/n-fertilizer_mai_image_gfdl-esm4_ssp126_<method>_annual_2015_2100.nc`. To regenerate after an intentional change to the script's output:
 
-1. Run `Rscript fertilizer_scaling.R` (or just the `main("mai", "ssp126", "image", "gfdl-esm4")` invocation) to produce fresh outputs under `data/outputs/`.
+1. Produce fresh outputs by running, from the repo root:
+
+   ```bash
+   Rscript fertilizer_scaling.R mai ssp126 image gfdl-esm4
+   ```
+
+   Or, in an R session started in the repo root, run `source("fertilizer_scaling_settings.R")`, then `source("fertilizer_scaling_functions.R")`, then `main("mai", "ssp126", "image", "gfdl-esm4")`.
+
+   Either way, the outputs land under `data/outputs/` when `FERT_OUTPUT_BASE_PATH` points there, as in the `.Renviron` described in [Input data and paths](../../../DEVELOPMENT.md#input-data-and-paths). If the variable is unset, they go to the PIK production path.
 2. Re-slice both methods with the snippet below (run from the repo root):
 
    ```r
@@ -23,7 +31,7 @@ The baselines are sliced from the full production outputs at `data/outputs/ssp12
    for (m in c("relative", "lambda")) {
      src <- sprintf("data/outputs/ssp126soc-adapt/%s/n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2100.nc", m, m)
      dst <- sprintf("tests/testthat-slow/baselines/n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2017.nc", m)
-     in_nc <- nc_open(src); on.exit(nc_close(in_nc), add = TRUE)
+     in_nc <- nc_open(src)
      var_name <- names(in_nc$var)[1]
      lon <- ncvar_get(in_nc, "lon")
      lat <- ncvar_get(in_nc, "lat")
@@ -32,6 +40,7 @@ The baselines are sliced from the full production outputs at `data/outputs/ssp12
      data <- ncvar_get(in_nc, var_name, start = c(1, 1, 1), count = c(-1, -1, 3))
      var_atts <- ncatt_get(in_nc, var_name)
      glb_atts <- ncatt_get(in_nc, 0)
+     nc_close(in_nc)
      dim_lon <- ncdim_def("lon", "degrees_east", lon)
      dim_lat <- ncdim_def("lat", "degrees_north", lat)
      dim_time <- ncdim_def("time", time_units, time_full[1:3])
