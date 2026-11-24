@@ -319,15 +319,16 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 # ============================================================================
 # FUNCTION: scale_with_timeseries
 # ============================================================================
-# Scale fertilizer rates using relative change from time series
+# Scale fertilizer rates to a time series using the given method
 #
 # Args:
 #   base_rate: Spatial pattern at 0.5 degree for base year [lon, lat]
 #   timeseries: Temporal data from ISIMIP3b [lon, lat, time]
-#   base_year: Year to use as reference for relative scaling (default: 2000)
+#   base_year: Reference year for scaling (default: 2000)
 #   start_year: First year in time series
 #   end_year: Last year in time series
-#   method: Scaling method - "relative" (default) or "lambda"
+#   method: Scaling method - "relative" (argument default) or "lambda"
+#           (production; main() passes each entry of scaling_methods)
 #
 # Returns:
 #   Scaled data [lon, lat, time]
@@ -808,7 +809,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 # Details:
 #   - For histsoc: processes 1850–2014
 #   - For future: combines historical (1850–2014) with future (2015–2100)
-#   - Applies both relative and lambda scaling methods
+#   - Applies each method in scaling_methods (production: lambda only)
 #   - Outputs NetCDF and diagnostic plots
 # ============================================================================
 main <- function(crop, scenario, iam = NULL, gcm = NULL) {
