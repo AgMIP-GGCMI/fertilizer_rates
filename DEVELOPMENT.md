@@ -133,9 +133,9 @@ If the inputs can't be found, the suite does not say so directly. Look in the te
 
 ### When a PNG snapshot fails
 
-testthat writes the mismatched render to `tests/testthat-slow/_snaps/plot_diagnostics_regression/<name>.new.png` alongside the baseline. To review in R:
+testthat writes the mismatched render to `tests/testthat-slow/_snaps/plot_diagnostics_regression/<name>.new.png` alongside the baseline. To review in R, from the repo root:
 
-    > testthat::snapshot_review("plot_diagnostics_regression")
+    > testthat::snapshot_review("plot_diagnostics_regression/", "tests/testthat-slow")
 
 If the change is intentional, accept the new baseline:
 
