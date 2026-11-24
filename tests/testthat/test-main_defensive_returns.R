@@ -37,22 +37,22 @@ test_that("main returns when 5-min spatial input file is missing", {
   expect_true(any(grepl("Input file does not exist", out)))
 })
 
-test_that("main returns when historical TS file is missing for a future scenario", {
+test_that("main errors when historical TS file is missing for a future scenario", {
   p <- setup_paths()
-  # Provide the spatial input so main gets past 632-633.
+  # Provide the spatial input so main gets past the 5-arcmin input check.
   make_5min_spatial_nc(
     file.path(p$spatial, "maizeNapprate_gadm_subnational.nc"),
     input_crop = "maize",
     lon = seq(-179.75, by = 0.5, length.out = 4),
     lat = seq(-89.75, by = 0.5, length.out = 3)
   )
-  out <- capture.output(
-    main("mai", "ssp126", iam = "image", gcm = "gfdl-esm4")
+  expect_error(
+    capture.output(main("mai", "ssp126", iam = "image", gcm = "gfdl-esm4")),
+    "Time series file does not exist: .*/histsoc/n-fertilizer-5crops_histsoc_annual_1850_2014\\.nc"
   )
-  expect_true(any(grepl("Historical time series file not found", out)))
 })
 
-test_that("main returns when funcgroup variable is not in the historical TS file", {
+test_that("main errors when funcgroup variable is not in the historical TS file", {
   p <- setup_paths()
   make_5min_spatial_nc(
     file.path(p$spatial, "maizeNapprate_gadm_subnational.nc"),
@@ -69,10 +69,11 @@ test_that("main returns when funcgroup variable is not in the historical TS file
     lat = seq(-89.75, by = 0.5, length.out = 3),
     nyears = 165, start_year = 1850
   )
-  out <- capture.output(
-    main("mai", "ssp126", iam = "image", gcm = "gfdl-esm4")
+  expect_error(
+    capture.output(main("mai", "ssp126", iam = "image", gcm = "gfdl-esm4")),
+    "Variable fertl_c4ann not found in time series file",
+    fixed = TRUE
   )
-  expect_true(any(grepl("not found in historical file", out)))
 })
 
 test_that("main returns when histsoc TS file is missing", {
