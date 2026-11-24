@@ -76,9 +76,8 @@ pct <- covr::percent_coverage(cov, by = "line")
 cat(sprintf("\nLine coverage: %.2f%%\n", pct))
 
 # Per-line HTML report, gitignored. Skipped when DT/htmltools aren't
-# available — those are covr::report()'s rendering deps but are not in
-# renv.lock. Install with `renv::install(c("DT", "htmltools"))` to
-# enable HTML output.
+# available — those are covr::report()'s rendering deps, locked in
+# renv.lock, so `renv::restore()` provides them.
 if (requireNamespace("DT", quietly = TRUE) &&
     requireNamespace("htmltools", quietly = TRUE)) {
   covr::report(cov, file = "coverage.html", browse = FALSE)
