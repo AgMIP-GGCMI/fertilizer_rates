@@ -1,6 +1,6 @@
 # Development
 
-Developer-facing companion to [README.md](README.md). Read that for what the project produces; read here for how to set up the devcontainer, run the script, exercise the test suites, and measure coverage.
+Developer-facing companion to [README.md](README.md). Read that for what the project produces; read here for how to set up the devcontainer, point the script at input data, run the script, exercise the test suites, and measure coverage.
 
 ## Devcontainer setup
 
@@ -50,6 +50,57 @@ Authentication and the installed plugin persist across restarts via the `claude-
 
 If you change the `Dockerfile`, the firewall script, or `devcontainer.json`: Command Palette → **"Dev Containers: Rebuild Container"**. Claude auth persists across rebuilds because the `/home/node/.claude` volume is keyed to the devcontainer ID, not the image.
 
+## Input data and paths
+
+`main()` reads its inputs from, and writes its outputs to, three directories defined in [fertilizer_scaling_settings.R](fertilizer_scaling_settings.R). Each can be overridden by an environment variable; when the variable is unset, the PIK cluster path is used.
+
+| Environment variable | Contents | Default (PIK cluster) |
+| --- | --- | --- |
+| `FERT_BASE_PATH_5MIN` | Mueller et al. year-2000 N application rates at 5 arc-minutes, one file per input crop (some GGCMI crops share a file) | `/p/projects/ikiimp/5min_input/toolbox_paper_application/fertilizer_paper/tmp/work_5min` |
+| `FERT_BASE_PATH_TIMESERIES` | ISIMIP3b `n-fertilizer-5crops` time series (LUH2 crop functional types) | `/p/projects/isimip/isimip/ISIMIP3b/InputData/socioeconomic/n-fertilizer` |
+| `FERT_OUTPUT_BASE_PATH` | Output NetCDFs and diagnostic PDFs | `/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/n-fertilizer/group_iii` |
+
+### Running off the cluster: `.Renviron` and `data/`
+
+Anywhere other than the PIK cluster (including this devcontainer), copy (or symlink) the inputs you need into `data/` and create a `.Renviron` in the repo root that points at them:
+
+```
+FERT_BASE_PATH_5MIN=./data/inputs/Napprate_gadm_subnational
+FERT_BASE_PATH_TIMESERIES=./data/inputs/isimip_files
+FERT_OUTPUT_BASE_PATH=./data/outputs
+```
+
+Both `.Renviron` and `data/` are gitignored, so every checkout needs its own copy — including each git worktree. Symlinking `data/inputs` (not `data` itself, which `.gitignore` only matches as a real directory), or using absolute paths in `.Renviron`, avoids duplicating the input files.
+
+How `.Renviron` is picked up:
+
+- R reads it only when started with the repo root as the working directory. The relative paths above resolve against that directory too. (`fertilizer_scaling.R` has to be run from the repo root anyway, because it `source()`s its siblings by relative path.)
+- Its values take precedence over same-named variables exported in your shell: `FERT_OUTPUT_BASE_PATH=/tmp/x Rscript …` has no effect while `.Renviron` sets that variable.
+- `Rscript --vanilla` skips it. The SLURM job script `submit_fertilizer_scaling_full.jcf` runs that way (from a hard-coded checkout directory), so cluster jobs ignore `.Renviron` and use the default paths — unless a `FERT_*` variable is exported in the shell you run `sbatch` from, which SLURM passes through by default.
+
+Expected layout under `data/`:
+
+```
+data/
+├── inputs/
+│   ├── Napprate_gadm_subnational/
+│   │   └── <input>Napprate_gadm_subnational.nc               # e.g. maizeNapprate_gadm_subnational.nc
+│   └── isimip_files/
+│       ├── histsoc/
+│       │   └── n-fertilizer-5crops_histsoc_annual_1850_2014.nc
+│       └── <ssp>soc-adapt/                                   # e.g. ssp126soc-adapt/
+│           └── n-fertilizer-5crops_<iam>_<gcm>_<ssp>_annual_2015_2100.nc
+└── outputs/                                                  # created by the script
+```
+
+- `<input>` is the crop's file base name from `crop_to_inputfile` in the settings file. Several crops share one (`swh` and `wwh` both read `wheat…`; `ri1` and `ri2` both read `rice…`).
+- Future-scenario runs also read the histsoc time-series file, because its year-2000 slice is the scaling baseline.
+- The script builds the same relative paths under the cluster defaults, so copying files across with their subdirectories keeps the layout correct. You only need the files for the crops and scenarios you plan to run.
+
+### Missing inputs
+
+Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing does stop with an error.)
+
 ## Running the script
 
 ```bash
@@ -69,6 +120,20 @@ The PNG regression tests render diagnostic plots for two reference scenarios (`m
 To skip the slow tests during rapid iteration:
 
     Rscript tests/testthat-fast.R
+
+### Test input data
+
+Only the PNG regression tests (`tests/testthat-slow/test-plot_diagnostics_regression.R`) need real input data. Everything else — all of `tests/testthat/` plus `tests/testthat-slow/test-main_full_runs.R` — uses in-memory arrays or tiny synthetic NetCDFs written to temporary directories.
+
+The PNG regression tests run `main()` on real inputs, found through `FERT_BASE_PATH_5MIN` and `FERT_BASE_PATH_TIMESERIES` as described in [Input data and paths](#input-data-and-paths). (Their outputs go to a temporary directory whatever `FERT_OUTPUT_BASE_PATH` says.) With the `.Renviron` shown there, they need:
+
+- `data/inputs/Napprate_gadm_subnational/maizeNapprate_gadm_subnational.nc`
+- `data/inputs/isimip_files/histsoc/n-fertilizer-5crops_histsoc_annual_1850_2014.nc`
+- `data/inputs/isimip_files/ssp126soc-adapt/n-fertilizer-5crops_image_gfdl-esm4_ssp126_annual_2015_2100.nc`
+
+Run the test and coverage scripts from the repo root (`Rscript tests/testthat.R`, not `cd tests && Rscript testthat.R`); otherwise `.Renviron` isn't loaded and the tests look for inputs at the cluster paths.
+
+If the inputs can't be found, the suite does not say so directly. Look in the test output for the `Input file does not exist:` or `Time series file does not exist:` lines that `main()` prints (see [Missing inputs](#missing-inputs)). In that case the `mai histsoc` test is reported as **skipped ("empty test")**, because `main()` returns early and produces no PNGs to compare, and the `mai ssp126` test fails, either on a missing output file or with that same `does not exist` message as an error.
 
 ### When a PNG snapshot fails
 
