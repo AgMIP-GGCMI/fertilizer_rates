@@ -4,7 +4,7 @@ Developer-facing companion to [README.md](README.md). Read that for what the pro
 
 ## Devcontainer setup
 
-This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts and tests use pre-installed (the current CRAN versions at image build time, not the versions pinned in `renv.lock`). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
+This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts and tests use installed from `renv.lock` (restored into `renv/library` when the container first starts). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
 
 ### Prerequisites
 
@@ -28,7 +28,7 @@ code .
 
 Then: Command Palette → **"Dev Containers: Reopen in Container"**.
 
-First build takes several minutes (R package compilation). Subsequent opens are fast thanks to image caching. The container's firewall activates automatically via the `postStartCommand` and verifies itself by confirming `https://example.com` is unreachable while `https://api.github.com` is.
+First start takes a few minutes: the image only installs `renv`, and the container's `postStartCommand` then compiles the R packages from `renv.lock` (see [R packages](#r-packages)); VS Code waits for this restore to finish before connecting, because `waitFor` is `postStartCommand`. Later opens are fast because `renv/library` persists on the host through the workspace bind mount. The container's firewall activates automatically via the `postStartCommand` and verifies itself by confirming `https://example.com` is unreachable while `https://api.github.com` is.
 
 ### First-run inside the container
 
@@ -52,7 +52,7 @@ If you change the `Dockerfile`, the firewall script, or `devcontainer.json`: Com
 
 ### R packages
 
-R packages (`ncdf4`, `testthat`, `fields`, `abind`, `MASS`, `lintr`) are baked into the image and resolved via `RENV_CONFIG_EXTERNAL_LIBRARIES`, so the repo's `.Rprofile` (which activates renv) still finds them. `renv.lock` is the authoritative dependency manifest; to install a new package, run `install.packages("pkg")` inside the container and — if you want the lockfile to reflect it — then `renv::snapshot()` and commit `renv.lock`.
+R packages come from `renv.lock`, the single source of truth. The image contains only `renv`; the container's `postStartCommand` runs `renv::restore(prompt = FALSE)` after the firewall comes up (CRAN is allowlisted), which installs the locked versions into `renv/library` (`RENV_CONFIG_CACHE_ENABLED=FALSE` makes these real copies rather than links into a cache that a rebuild would lose). The first start compiles every package from source, which took about 2 minutes for 76 packages on an arm64 machine with a fast connection (expect longer on slower hardware); the packages then persist in `renv/library` (on the host through the workspace bind mount), so later starts and rebuilds restore only what changed and are quick. To add a package: run `install.packages("pkg")` inside the container; make sure code refers to the package (for a dev-only tool, declare it in `tools/dev_dependencies.R`), because snapshots are implicit and only record packages the code uses; then run `renv::snapshot()` and commit `renv.lock`. If the restore fails (network, a compile error), the firewall is already up and the error appears in the container's start log; fix the cause and rerun `Rscript -e 'renv::restore()'` from `/workspace`, which skips packages already installed. Because the restore runs on every start, a package you installed or upgraded but haven't recorded with `renv::snapshot()` is reverted to the locked version on the next start, so snapshot before restarting; packages not in the lock are left alone. After pulling a change to `renv.lock`, restarting the container restores it, or run `renv::restore()` directly. If `renv::restore()` ever reports that the dependency tree was repaired, the lockfile is incomplete: run `renv::snapshot()` and commit `renv.lock`.
 
 ## Input data and paths
 
@@ -145,7 +145,7 @@ Then commit the updated snapshot files alongside the code change that produced t
 
 ### Environment caveat
 
-Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and CRAN R packages current when the image was built — a rebuild can pick up newer versions). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
+Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and the R package versions pinned in `renv.lock`). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
 
 ## Coverage
 
@@ -153,15 +153,13 @@ Generate a line-coverage report for `fertilizer_scaling_functions.R`:
 
     Rscript tests/coverage.R
 
-This requires a one-time installation of the `covr` tool:
-
-    Rscript -e 'renv::install("covr")'
+This needs `covr`, which is locked in `renv.lock` and restored automatically with the other packages.
 
 The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes a few minutes.
 
 It prints a per-file summary to the console and, when the optional rendering deps are available, also writes a per-line HTML report to `coverage.html` (gitignored). Open it in a browser to see exactly which expressions went uncovered. The HTML deps (`DT`, `htmltools`) are locked in `renv.lock`, so `renv::restore()` installs them. If they are missing from your library the HTML step is skipped; install them with:
 
-    Rscript -e 'renv::install(c("DT", "htmltools"))'
+    Rscript -e 'renv::restore()'
 
 Pass an optional threshold percentage to fail the run when coverage drops below it (intended for CI):
 

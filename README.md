@@ -37,7 +37,7 @@ The repo's `.Rprofile` activates renv, which hides your usual R library whenever
 Rscript -e 'renv::restore()'
 ```
 
-Alternatively, use the devcontainer described in [DEVELOPMENT.md](DEVELOPMENT.md), which provides the packages (current CRAN versions rather than the `renv.lock` pins), or set `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` to skip renv and use your own library, as the SLURM job script does.
+Alternatively, use the devcontainer described in [DEVELOPMENT.md](DEVELOPMENT.md), which provides the packages (restored from `renv.lock`), or set `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` to skip renv and use your own library, as the SLURM job script does.
 
 ### Input and output locations
 

@@ -25,7 +25,7 @@
 suppressPackageStartupMessages(library(testthat))
 
 if (!requireNamespace("covr", quietly = TRUE)) {
-  stop("covr is not installed. Install with `renv::install(\"covr\")`.")
+  stop("covr is not installed. It is locked in renv.lock; run `renv::restore()`.")
 }
 
 source_files <- c(
