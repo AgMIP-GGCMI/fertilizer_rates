@@ -37,6 +37,8 @@ The repo's `.Rprofile` activates renv, which hides your usual R library whenever
 Rscript -e 'renv::restore()'
 ```
 
+The lockfile also covers the dev and test tools (covr, lintr, DT, shiny, diffviewer and their dependencies), and some locked versions are archived CRAN releases that need a source build (e.g. `fields` needs gfortran). If you only run the scripts, restore just what they load: `Rscript -e 'renv::restore(packages = c("ncdf4", "fields", "abind", "MASS", "testthat"))'`.
+
 Alternatively, use the devcontainer described in [DEVELOPMENT.md](DEVELOPMENT.md), which provides the packages (restored from `renv.lock`), or set `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` to skip renv and use your own library, as the SLURM job script does.
 
 ### Input and output locations
