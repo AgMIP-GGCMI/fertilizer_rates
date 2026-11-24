@@ -15,15 +15,18 @@ Each file is a 720 × 360 × 3 (lon × lat × time) slice of the full 2015–210
 
 The baselines are sliced from the full production outputs at `data/outputs/ssp126soc-adapt/<method>/n-fertilizer_mai_image_gfdl-esm4_ssp126_<method>_annual_2015_2100.nc`. To regenerate after an intentional change to the script's output:
 
-1. Produce fresh outputs by running, from the repo root:
+1. Produce fresh outputs of both methods. In an R session started in the repo root, run:
 
-   ```bash
-   Rscript fertilizer_scaling.R mai ssp126 image gfdl-esm4
+   ```r
+   source("fertilizer_scaling_settings.R")
+   scaling_methods <- c("relative", "lambda")
+   source("fertilizer_scaling_functions.R")
+   main("mai", "ssp126", "image", "gfdl-esm4")
    ```
 
-   Or, in an R session started in the repo root, run `source("fertilizer_scaling_settings.R")`, then `source("fertilizer_scaling_functions.R")`, then `main("mai", "ssp126", "image", "gfdl-esm4")`.
+   Don't use `Rscript fertilizer_scaling.R mai ssp126 image gfdl-esm4` here. The production settings set `scaling_methods <- c("lambda")`, so that command (and `main()` without the override above) writes only the lambda output, and step 2 would re-slice a stale relative file from an earlier run. The override goes after sourcing the settings so it isn't overwritten.
 
-   Either way, the outputs land under `data/outputs/` when `FERT_OUTPUT_BASE_PATH` points there, as in the `.Renviron` described in [Input data and paths](../../../DEVELOPMENT.md#input-data-and-paths). If the variable is unset, they go to the PIK production path.
+   The outputs land under `data/outputs/` when `FERT_OUTPUT_BASE_PATH` points there, as in the `.Renviron` described in [Input data and paths](../../../DEVELOPMENT.md#input-data-and-paths). If the variable is unset, they go to the PIK production path.
 2. Re-slice both methods with the snippet below (run from the repo root):
 
    ```r
