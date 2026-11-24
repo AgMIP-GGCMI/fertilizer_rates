@@ -628,7 +628,8 @@ check_relative_changes_applied <- function(scaled_data, timeseries, base_rate,
 # Tests:
 #   1. Base year values match original pattern (relative method only)
 #   2. No negative values introduced
-#   3. Trends are preserved from the time series
+#   3. Trends are preserved from the time series (relative method only;
+#      lambda prints the median correlation)
 #   4. Relative changes are correctly applied (relative method only)
 # ============================================================================
 test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_year, method = "relative") {
@@ -657,16 +658,17 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
   })
 
   trends <- check_trends_preserved(scaled_data, timeseries)
-  test_that("Trends are preserved from time series", {
-    if (trends$n_sampled > 0) {
-      if (method == "relative") {
+  if (method == "relative") {
+    test_that("Trends are preserved from time series", {
+      if (trends$n_sampled > 0) {
         expect_true(trends$median_correlation > 0.95)
-      } else {
-        cat(sprintf("Median trend correlation (lambda method): %.4f\n",
-                    trends$median_correlation))
       }
-    }
-  })
+    })
+  } else if (trends$n_sampled > 0) {
+    # For lambda method, just report the median correlation (informational only)
+    cat(sprintf("Median trend correlation (lambda method): %.4f\n",
+                trends$median_correlation))
+  }
 
   # Test relative changes only for relative method
   if (method == "relative") {
