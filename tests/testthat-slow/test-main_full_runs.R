@@ -21,6 +21,7 @@ setup_full_run <- function(envir = parent.frame()) {
   # would accidentally cover lines 1353-1358 from these end-to-end tests.
   # Stub it out so coverage of the handler comes from the targeted test at
   # tests/testthat/test-compare_relative_lambda_trycatch.R.
+  # Under the production setting (lambda only) main() skips compare_relative_lambda(), so the stub only matters when both methods are enabled.
   noop_compare <- function(...) invisible(NULL)
   local_mocked_globals(
     base_path_5min = spatial,
@@ -58,10 +59,10 @@ test_that("main() handles a 3D 5-min spatial variable (slices first time step)",
 
   expect_no_error(main("mai", "histsoc"))
   # main() writes outputs at output_base_path; confirm the histsoc
-  # relative NetCDF is present, proving main() ran to completion.
+  # lambda NetCDF is present, proving main() ran to completion.
   expect_true(file.exists(file.path(
-    p$out, "histsoc", "relative",
-    "n-fertilizer_mai_histsoc_relative_annual_1850_2014.nc"
+    p$out, "histsoc", "lambda",
+    "n-fertilizer_mai_histsoc_lambda_annual_1850_2014.nc"
   )))
 })
 
@@ -96,7 +97,7 @@ test_that("main() falls back to fertl_<type> alt name when funcgroup uses <type>
   out <- capture.output(main("mai", "histsoc"))
   expect_true(any(grepl("not found, using fertl_c4ann instead", out)))
   expect_true(file.exists(file.path(
-    p$out, "histsoc", "relative",
-    "n-fertilizer_mai_histsoc_relative_annual_1850_2014.nc"
+    p$out, "histsoc", "lambda",
+    "n-fertilizer_mai_histsoc_lambda_annual_1850_2014.nc"
   )))
 })
