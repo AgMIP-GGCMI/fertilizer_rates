@@ -31,7 +31,7 @@ The baselines are sliced from the full production outputs at `data/outputs/ssp12
    for (m in c("relative", "lambda")) {
      src <- sprintf("data/outputs/ssp126soc-adapt/%s/n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2100.nc", m, m)
      dst <- sprintf("tests/testthat-slow/baselines/n-fertilizer_mai_image_gfdl-esm4_ssp126_%s_annual_2015_2017.nc", m)
-     in_nc <- nc_open(src); on.exit(nc_close(in_nc), add = TRUE)
+     in_nc <- nc_open(src)
      var_name <- names(in_nc$var)[1]
      lon <- ncvar_get(in_nc, "lon")
      lat <- ncvar_get(in_nc, "lat")
@@ -40,6 +40,7 @@ The baselines are sliced from the full production outputs at `data/outputs/ssp12
      data <- ncvar_get(in_nc, var_name, start = c(1, 1, 1), count = c(-1, -1, 3))
      var_atts <- ncatt_get(in_nc, var_name)
      glb_atts <- ncatt_get(in_nc, 0)
+     nc_close(in_nc)
      dim_lon <- ncdim_def("lon", "degrees_east", lon)
      dim_lat <- ncdim_def("lat", "degrees_north", lat)
      dim_time <- ncdim_def("time", time_units, time_full[1:3])
