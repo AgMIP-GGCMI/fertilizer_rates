@@ -103,7 +103,7 @@ data/
 
 ### Missing inputs
 
-Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing does stop with an error.)
+Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing, or lacks the crop's variable, does stop with an error: `Time series file does not exist: <path>` or `Variable <funcgroup> not found in time series file`.)
 
 ## Testing
 
