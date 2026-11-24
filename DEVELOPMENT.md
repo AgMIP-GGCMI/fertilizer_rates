@@ -4,7 +4,7 @@ Developer-facing companion to [README.md](README.md). Read that for what the pro
 
 ## Devcontainer setup
 
-This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts and tests use installed from `renv.lock` (restored into `renv/library` when the container first starts). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
+This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts, tests and dev tools use installed from `renv.lock` (restored into `renv/library` on every container start: the first start compiles everything, later starts are a no-op unless `renv.lock` changed). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
 
 ### Prerequisites
 
