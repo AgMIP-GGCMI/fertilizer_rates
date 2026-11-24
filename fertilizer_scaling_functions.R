@@ -803,12 +803,14 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 # Args:
 #   crop: Crop name (e.g., "mai" for maize)
 #   scenario: "histsoc" (historical) or SSP scenario (e.g., "ssp585")
-#   iam: IAM model name for future scenarios (e.g., "IMAGE")
-#   gcm: GCM name for future scenarios (e.g., "HadGEM2-ES")
+#   iam: IAM for future scenarios, as in the input file names (e.g., "image")
+#   gcm: GCM for future scenarios, as in the input file names (e.g., "gfdl-esm4")
 #
 # Details:
-#   - For histsoc: processes 1850–2014
-#   - For future: combines historical (1850–2014) with future (2015–2100)
+#   - For histsoc: scales and writes 1850–2014
+#   - For future: reads only the year-2000 slice of the historical time series
+#     (the scaling baseline) plus the 2015–2100 future series; scales and
+#     writes 2015–2100
 #   - Applies each method in scaling_methods (production: lambda only)
 #   - Outputs NetCDF and diagnostic plots
 # ============================================================================

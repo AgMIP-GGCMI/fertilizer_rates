@@ -62,20 +62,8 @@
 # Date: 2026-01-15
 # ============================================================================
 
-# for production, run bash loop over crops and scenarios
-# for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#   # Historical scenario
-#   Rscript fertilizer_scaling.R "$crop" histsoc
-#   
-#   # Future scenarios: all combinations of SSP, IAM, GCM
-#   for ssp in ssp126 ssp370 ssp585; do
-#     for iam in image magpie; do
-#       for gcm in gfdl-esm4 ipsl-cm6a-lr mpi-esm1-2-hr mri-esm2-0 ukesm1-0-ll; do
-#         Rscript fertilizer_scaling.R "$crop" "$ssp" "$iam" "$gcm"
-#       done
-#     done
-#   done
-# done
+# Usage and production runs: see the EXECUTION block at the end of this file
+# and the "Usage" section of README.md.
 
 # Libraries, paths, crop mappings, scenario lists, base_year — see file.
 source("fertilizer_scaling_settings.R")
@@ -118,26 +106,20 @@ if (!(crop %in% cropnames)) {
 main(crop, scenario, iam, gcm)
 
 # ============================================================================
-# EXECUTION AND TESTING
+# EXECUTION
 # ============================================================================
-# 
-# QUICK START (single crop, test scenarios):
+#
+# Run from the repo root, one crop and scenario per invocation:
+#   Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]
 #   Rscript fertilizer_scaling.R mai histsoc
 #   Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
+# (iam and gcm are required for future scenarios.)
 #
-# PRODUCTION MODE (all crops, all scenarios):
-#   For all 15 crops individually:
-#     for crop in swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc; do
-#       Rscript fertilizer_scaling.R $crop
-#     done
+# Production (all crops x all scenarios, PIK cluster):
+#   sbatch submit_fertilizer_scaling_full.jcf
 #
-# OUTPUT:
-#   - Scaled NetCDF files: output_base_path/{relative,lambda}/{crop}_{scenario}.nc
-#   - Diagnostic plots: output_base_path/diagnostics/{crop}_{scenario}_*.pdf
-#
-# COMMAND-LINE ARGUMENTS:
-#   arg1: crop name (required, e.g., mai)
-#   arg2: scenario (required: histsoc or an SSP)
+# Argument values, output paths, and file names: see the "Usage" section of
+# README.md.
 #
 # ============================================================================
 
