@@ -75,7 +75,7 @@ if (requireNamespace("DT", quietly = TRUE) &&
   covr::report(cov, file = "coverage_fast.html", browse = FALSE)
   cat("HTML report: coverage_fast.html\n")
 } else {
-  cat("HTML report skipped: install DT and htmltools to enable.\n")
+  cat("HTML report skipped: DT and htmltools are not installed. They are locked in renv.lock; run `renv::restore()`.\n")
 }
 
 if (!is.na(threshold)) {
