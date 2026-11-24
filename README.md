@@ -87,4 +87,4 @@ It changes into a hard-coded `SCRIPT_DIR`, writes logs to `logs/` under the defa
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for devcontainer setup, input data and paths, running the script, testing (full / fast suites, PNG snapshot review), coverage, and container internals (firewall allowlist, security caveat).
+See [DEVELOPMENT.md](DEVELOPMENT.md) for devcontainer setup, input data and paths, testing (full / fast suites, PNG snapshot review), coverage, and container internals (firewall allowlist, security caveat).

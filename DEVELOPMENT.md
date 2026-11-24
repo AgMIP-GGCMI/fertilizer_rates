@@ -1,6 +1,6 @@
 # Development
 
-Developer-facing companion to [README.md](README.md). Read that for what the project produces; read here for how to set up the devcontainer, point the script at input data, run the script, exercise the test suites, and measure coverage.
+Developer-facing companion to [README.md](README.md). Read that for what the project produces and how to run it; read here for how to set up the devcontainer, point the script at input data, exercise the test suites, and measure coverage.
 
 ## Devcontainer setup
 
@@ -49,6 +49,10 @@ Authentication and the installed plugin persist across restarts via the `claude-
 ### Rebuilding
 
 If you change the `Dockerfile`, the firewall script, or `devcontainer.json`: Command Palette → **"Dev Containers: Rebuild Container"**. Claude auth persists across rebuilds because the `/home/node/.claude` volume is keyed to the devcontainer ID, not the image.
+
+### R packages
+
+R packages (`ncdf4`, `testthat`, `fields`, `abind`, `MASS`, `lintr`) are baked into the image and resolved via `RENV_CONFIG_EXTERNAL_LIBRARIES`, so the repo's `.Rprofile` (which activates renv) still finds them. `renv.lock` is the authoritative dependency manifest; to install a new package, run `install.packages("pkg")` inside the container and — if you want the lockfile to reflect it — then `renv::snapshot()` and commit `renv.lock`.
 
 ## Input data and paths
 
@@ -100,14 +104,6 @@ data/
 ### Missing inputs
 
 Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing does stop with an error.)
-
-## Running the script
-
-```bash
-Rscript fertilizer_scaling.R
-```
-
-R packages (`ncdf4`, `testthat`, `fields`, `abind`, `MASS`, `lintr`) are baked into the image and resolved via `RENV_CONFIG_EXTERNAL_LIBRARIES`, so the repo's `.Rprofile` (which activates renv) still finds them. `renv.lock` is the authoritative dependency manifest; to install a new package, run `install.packages("pkg")` inside the container and — if you want the lockfile to reflect it — then `renv::snapshot()` and commit `renv.lock`.
 
 ## Testing
 
