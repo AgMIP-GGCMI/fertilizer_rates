@@ -43,29 +43,21 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   lon_halfdeg <- colMeans(matrix(lon_5min, nrow = agg_factor))
   lat_halfdeg <- colMeans(matrix(lat_5min, nrow = agg_factor))
 
-  # create output array
-  data_halfdeg <- array(NA, dim = c(nlon_out, nlat_out))
-
-  # vectorized aggregation using array operations
-  # process one output longitude at a time (still faster than nested loop)
-  for (i in 1:nlon_out) {
-    i_start <- (i - 1) * agg_factor + 1
-    i_end <- i * agg_factor
-
-    # extract longitude slice for all latitudes at once
-    lon_slice <- data_5min[i_start:i_end, ]
-
-    # vectorized aggregation over latitude
-    for (j in 1:nlat_out) {
-      j_start <- (j - 1) * agg_factor + 1
-      j_end <- j * agg_factor
-
-      # extract block and calculate mean
-      block <- lon_slice[, j_start:j_end]
-      data_halfdeg[i, j] <- mean(block, na.rm = TRUE)
-      if (is.nan(data_halfdeg[i, j])) data_halfdeg[i, j] <- NA
-    }
-  }
+  # Reshape into a 4-D layout where each 6x6 input block ends up
+  # contiguous along a single 36-element axis: dim 1 is the within-block
+  # lon offset, dim 3 is the within-block lat offset, dims 2 and 4 are
+  # the output lon/lat indices. aperm pulls the two within-block dims
+  # together; the dim() assignment then collapses them into one
+  # 36-element axis per output cell so colMeans computes all 259,200
+  # block means in a single C-level call.
+  arr <- array(data_5min, dim = c(agg_factor, nlon_out, agg_factor, nlat_out))
+  arr <- aperm(arr, c(1, 3, 2, 4))
+  dim(arr) <- c(agg_factor * agg_factor, nlon_out * nlat_out)
+  data_halfdeg <- matrix(colMeans(arr, na.rm = TRUE),
+                         nrow = nlon_out, ncol = nlat_out)
+  # colMeans(., na.rm = TRUE) returns NaN for an all-NA column; rewrite
+  # those to NA so missing data stays missing.
+  data_halfdeg[is.nan(data_halfdeg)] <- NA
 
   # Canonicalize to ascending lat with data aligned south->north along the
   # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
