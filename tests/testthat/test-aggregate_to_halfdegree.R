@@ -140,3 +140,28 @@ test_that("output coords are derived from input coords, not hardcoded", {
   expect_equal(result$lon[1], -179.75 + 0.01, tolerance = 1e-4)
   expect_equal(result$lat[1], -89.75 + 0.01, tolerance = 1e-4)
 })
+
+test_that("transposed input fails with a clear error", {
+  expect_error(
+    aggregate_to_halfdegree(array(NA_real_, dim = c(2160, 4320)), make_lon_asc(), make_lat_asc()),
+    "data_5min must be 4320 x 2160"
+  )
+})
+
+test_that("wrong-length input fails with a clear error", {
+  expect_error(
+    aggregate_to_halfdegree(array(NA_real_, dim = c(4314, 2160)), make_lon_asc(), make_lat_asc()),
+    "data_5min must be 4320 x 2160"
+  )
+})
+
+test_that("wrong-length coordinate vectors fail with a clear error", {
+  expect_error(
+    aggregate_to_halfdegree(make_input(), make_lon_asc()[-1], make_lat_asc()),
+    "lon_5min"
+  )
+  expect_error(
+    aggregate_to_halfdegree(make_input(), make_lon_asc(), make_lat_asc()[-1]),
+    "lat_5min"
+  )
+})

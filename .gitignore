@@ -8,3 +8,5 @@ lib/
 .Renviron
 data/
 CLAUDE.md
+docs/superpowers/
+issue*

@@ -5,19 +5,23 @@
 # CLI wrapper around render_diagnostics_to_png(). See
 # tools/diagnostics_png_harness.R for the shadowing logic.
 # Renders with whatever `scaling_methods` the settings file sets (lambda only in
-# production). Unlike the regression test, it does not enable the relative method,
-# so its output won't match the test's snapshots page for page.
+# production). With --both-methods it sets scaling_methods to c("relative", "lambda"),
+# the regression test's configuration; without it, the output won't match the test's
+# snapshots page for page.
 #
 # Usage:
-#   Rscript tools/render_diagnostics_png.R <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]
+#   Rscript tools/render_diagnostics_png.R [--both-methods] <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]
 # ============================================================================
 
 args <- commandArgs(trailingOnly = TRUE)
+both_methods <- "--both-methods" %in% args
+args <- args[args != "--both-methods"]
 if (length(args) < 3) {
-  stop("Usage: Rscript tools/render_diagnostics_png.R <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]")
+  stop("Usage: Rscript tools/render_diagnostics_png.R [--both-methods] <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]")
 }
 
 source("fertilizer_scaling_settings.R")
+if (both_methods) scaling_methods <- c("relative", "lambda")
 source("fertilizer_scaling_functions.R")
 source("tools/diagnostics_png_harness.R")
 

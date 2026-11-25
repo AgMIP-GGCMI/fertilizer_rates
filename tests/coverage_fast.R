@@ -10,17 +10,18 @@
 # Run from the repo root.
 #
 # Scope: instruments the support library files that are sourced as part
-# of the production runtime path or used by the PNG-regression tooling.
+# of the production runtime path or used by the PNG-regression and
+# output-verification tooling.
 # Excludes CLI scripts (fertilizer_scaling.R, tools/render_diagnostics_png.R,
-# tools/accept_diagnostics_baseline.R) because they execute at top level
+# tools/accept_diagnostics_baseline.R, tools/compare_netcdf_outputs.R) because they execute at top level
 # and can't be safely sourced into covr's evaluation env. Coverage of
 # fertilizer_scaling_functions.R itself is measured by tests/coverage.R.
 #
 # This is "fast" because only tests/testthat/ files are used; the slow
-# PNG-regression suite (which is what currently exercises the helper
-# functions end-to-end) is skipped. Expect 0% until fast unit tests are
-# added for the support helpers — the headline number is forward-looking
-# scaffolding rather than a current-coverage signal.
+# PNG-regression suite (which is what exercises the PNG helpers
+# end-to-end) is skipped, so tools/diagnostics_png_harness.R reports 0%.
+# The plot-diagnostics helpers are covered only as far as the fast tests
+# reach them, and tools/netcdf_compare.R by its own fast unit tests.
 
 suppressPackageStartupMessages(library(testthat))
 
@@ -31,7 +32,8 @@ if (!requireNamespace("covr", quietly = TRUE)) {
 source_files <- c(
   "fertilizer_scaling_settings.R",
   "fertilizer_scaling_plot_diagnostics_functions.R",
-  "tools/diagnostics_png_harness.R"
+  "tools/diagnostics_png_harness.R",
+  "tools/netcdf_compare.R"
 )
 
 missing <- source_files[!file.exists(source_files)]

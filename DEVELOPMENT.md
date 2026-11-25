@@ -111,7 +111,7 @@ Run the full test suite (unit tests + PNG regression tests):
 
     Rscript tests/testthat.R
 
-The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. The slow suite takes about 50 seconds, and the full suite (fast and slow together) about a minute. The renders enable both scaling methods (relative and lambda) even though production runs lambda only, so the baseline PNGs include relative-method and relative-vs-lambda comparison pages, and the NetCDF baselines include a relative-method file.
+The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. The slow suite takes about 20 seconds, and the full suite (fast and slow together) about 30 seconds. The renders enable both scaling methods (relative and lambda) even though production runs lambda only, so the baseline PNGs include relative-method and relative-vs-lambda comparison pages, and the NetCDF baselines include a relative-method file.
 
 To skip the slow tests during rapid iteration:
 
@@ -143,9 +143,21 @@ If the change is intentional, accept the new baseline:
 
 Then commit the updated snapshot files alongside the code change that produced them.
 
+To render the same diagnostics PNGs by hand, run `Rscript tools/render_diagnostics_png.R --both-methods <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]`; the flag sets `scaling_methods` to `c("relative", "lambda")`, the regression test's method set, whereas the default uses only the methods in `fertilizer_scaling_settings.R` (lambda in production).
+
 ### Environment caveat
 
 Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and the R package versions pinned in `renv.lock`). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
+
+### Checking NetCDF outputs bit-for-bit
+
+Run from the repo root with the inputs from [Test input data](#test-input-data) in place. Capture outputs with `rm -rf data/outputs-new && Rscript tools/render_diagnostics_png.R --both-methods data/outputs-new/histsoc mai histsoc && Rscript tools/render_diagnostics_png.R --both-methods data/outputs-new/ssp126 mai ssp126 image gfdl-esm4`; each capture writes its NetCDFs under `<dir>/nc-outputs/`.
+
+Do the reference capture once, before making changes, using `data/outputs-ref` in place of `data/outputs-new`; re-running the capture command against `data/outputs-ref` would delete the reference because of the `rm -rf`.
+
+Compare them with `Rscript tools/compare_netcdf_outputs.R data/outputs-ref data/outputs-new`, which prints one `<STATUS> <path> <ref_bytes> -> <new_bytes> bytes <detail>` line per `.nc` file (sizes are informational) and exits with status 1 if any file is not `OK` or if no `.nc` files are found in either directory.
+
+Bit-for-bit means identical dimension names, lengths, units and coordinate values; identical variable data (including the NA pattern), all variable attributes, missval and precision; and identical global attributes except `creation_date`. Compression level and file size are not compared.
 
 ## Coverage
 
@@ -155,7 +167,7 @@ Generate a line-coverage report for `fertilizer_scaling_functions.R`:
 
 This needs `covr`, which is locked in `renv.lock` and restored automatically with the other packages.
 
-The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes a few minutes.
+The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes about 30 seconds.
 
 It prints a per-file summary to the console and, when the optional rendering deps are available, also writes a per-line HTML report to `coverage.html` (gitignored). Open it in a browser to see exactly which expressions went uncovered. The HTML deps (`DT`, `htmltools`) are locked in `renv.lock`, so `renv::restore()` installs them. If they are missing from your library the HTML step is skipped; install them with:
 
@@ -165,7 +177,7 @@ Pass an optional threshold percentage to fail the run when coverage drops below 
 
     Rscript tests/coverage.R 90
 
-A companion fast-only report measures the support library files (`fertilizer_scaling_settings.R`, `fertilizer_scaling_plot_diagnostics_functions.R`, `tools/diagnostics_png_harness.R`) using just the fast suite — it runs in seconds and is forward-looking scaffolding for future unit tests of those helpers (today's number is 0% because no fast tests exercise them). It writes `coverage_fast.html` under the same DT/htmltools condition as above:
+A companion fast-only report measures the support library files (`fertilizer_scaling_settings.R`, `fertilizer_scaling_plot_diagnostics_functions.R`, `tools/diagnostics_png_harness.R`, `tools/netcdf_compare.R`) using just the fast suite — it runs in seconds. The PNG harness reports 0% because only the slow suite exercises it, the plot-diagnostics helpers are covered only as far as the fast tests reach them, and `tools/netcdf_compare.R` is covered by its own fast unit tests. It writes `coverage_fast.html` under the same DT/htmltools condition as above:
 
     Rscript tests/coverage_fast.R
 

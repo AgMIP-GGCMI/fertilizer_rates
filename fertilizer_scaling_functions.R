@@ -13,7 +13,7 @@ source("fertilizer_scaling_plot_diagnostics_functions.R")
 # Aggregate spatial data from 5 arcmin to 0.5 degree resolution
 #
 # Args:
-#   data_5min: Array of data at 5 arcmin resolution [4320 x 2160]
+#   data_5min: Array of data at 5 arcmin resolution [4320 x 2160, lon x lat]
 #   lon_5min: Longitude values for 5 arcmin grid
 #   lat_5min: Latitude values for 5 arcmin grid
 #
@@ -36,6 +36,23 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   nlat_out <- 360
   agg_factor <- 6
 
+  # The reshape below would silently scramble or recycle wrongly shaped input.
+  nlon_in <- nlon_out * agg_factor
+  nlat_in <- nlat_out * agg_factor
+  if (length(dim(data_5min)) != 2 ||
+      !isTRUE(all(as.integer(dim(data_5min)) == c(nlon_in, nlat_in)))) {
+    stop("aggregate_to_halfdegree: data_5min must be ", nlon_in, " x ", nlat_in,
+         " [lon, lat], got ", paste(dim(data_5min), collapse = " x "), ".")
+  }
+  if (length(lon_5min) != nlon_in) {
+    stop("aggregate_to_halfdegree: lon_5min must have length ", nlon_in,
+         ", got ", length(lon_5min), ".")
+  }
+  if (length(lat_5min) != nlat_in) {
+    stop("aggregate_to_halfdegree: lat_5min must have length ", nlat_in,
+         ", got ", length(lat_5min), ".")
+  }
+
   # Derive output coordinates by averaging each 6-cell block of the input
   # coordinates rather than synthesizing from scratch, so we inherit
   # whatever convention the input file uses (Mueller 5-min files are
@@ -43,29 +60,21 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   lon_halfdeg <- colMeans(matrix(lon_5min, nrow = agg_factor))
   lat_halfdeg <- colMeans(matrix(lat_5min, nrow = agg_factor))
 
-  # create output array
-  data_halfdeg <- array(NA, dim = c(nlon_out, nlat_out))
-
-  # vectorized aggregation using array operations
-  # process one output longitude at a time (still faster than nested loop)
-  for (i in 1:nlon_out) {
-    i_start <- (i - 1) * agg_factor + 1
-    i_end <- i * agg_factor
-
-    # extract longitude slice for all latitudes at once
-    lon_slice <- data_5min[i_start:i_end, ]
-
-    # vectorized aggregation over latitude
-    for (j in 1:nlat_out) {
-      j_start <- (j - 1) * agg_factor + 1
-      j_end <- j * agg_factor
-
-      # extract block and calculate mean
-      block <- lon_slice[, j_start:j_end]
-      data_halfdeg[i, j] <- mean(block, na.rm = TRUE)
-      if (is.nan(data_halfdeg[i, j])) data_halfdeg[i, j] <- NA
-    }
-  }
+  # Reshape into a 4-D layout where each 6x6 input block ends up
+  # contiguous along a single 36-element axis: dim 1 is the within-block
+  # lon offset, dim 3 is the within-block lat offset, dims 2 and 4 are
+  # the output lon/lat indices. aperm pulls the two within-block dims
+  # together; the dim() assignment then collapses them into one
+  # 36-element axis per output cell so colMeans computes all 259,200
+  # block means in a single C-level call.
+  arr <- array(data_5min, dim = c(agg_factor, nlon_out, agg_factor, nlat_out))
+  arr <- aperm(arr, c(1, 3, 2, 4))
+  dim(arr) <- c(agg_factor * agg_factor, nlon_out * nlat_out)
+  data_halfdeg <- matrix(colMeans(arr, na.rm = TRUE),
+                         nrow = nlon_out, ncol = nlat_out)
+  # colMeans(., na.rm = TRUE) returns NaN for an all-NA column; rewrite
+  # those to NA so missing data stays missing.
+  data_halfdeg[is.nan(data_halfdeg)] <- NA
 
   # Canonicalize to ascending lat with data aligned south->north along the
   # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
@@ -193,26 +202,19 @@ scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base
 # FUNCTION: compute_lambda
 # ============================================================================
 # Compute the per-cell lambda exponent used by the lambda scaling method.
-# lambda = sqrt(base_timeseries / base_rate) when base_timeseries < base_rate
-# (at cells where both are valid and positive). Otherwise lambda = 1.
+# lambda = sqrt(base_timeseries / base_rate) where valid_base is TRUE and
+# 0 < base_timeseries < base_rate (base_timeseries non-NA).
+# lambda = 1 everywhere else, including cells where base_rate == 0.
 # ============================================================================
 compute_lambda <- function(base_rate, base_timeseries, valid_base) {
-  nlon <- dim(base_rate)[1]
-  nlat <- dim(base_rate)[2]
-  lambda <- array(1, dim = c(nlon, nlat))
-  for (i in 1:nlon) {
-    for (j in 1:nlat) {
-      if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-        ts_base_val <- base_timeseries[i, j]
-        spatial_val <- base_rate[i, j]
-        if (ts_base_val < spatial_val) {
-          lambda[i, j] <- sqrt(ts_base_val / spatial_val)
-        } else {
-          lambda[i, j] <- 1
-        }
-      }
-    }
-  }
+  # Default lambda is 1 everywhere; only the cells where the time-series
+  # baseline is strictly less than the spatial baseline get
+  # sqrt(ts / spatial). Cells that are invalid, have NA ts, ts <= 0, or
+  # ts >= spatial all keep the 1 initialization.
+  lambda <- array(1, dim = dim(base_rate))
+  mask <- valid_base & !is.na(base_timeseries) &
+    base_timeseries > 0 & base_timeseries < base_rate
+  lambda[mask] <- sqrt(base_timeseries[mask] / base_rate[mask])
   lambda
 }
 
@@ -221,51 +223,43 @@ compute_lambda <- function(base_rate, base_timeseries, valid_base) {
 # ============================================================================
 # Compute one [lon, lat] scaled slice using the lambda scaling method.
 #   scaled = base * [1 + (ts_t - ts_base) / base * (base / ts_base) ^ lambda]
-# Clamped to >= 0. Invalid cells remain NA.
+# Zero base_rate cells (where valid_base is TRUE) take the raw ts_t instead.
+# Clamped to >= 0. Cells with valid_base FALSE, and cells with a nonzero
+# base_rate whose base_timeseries is NA or <= 0, remain NA.
 #
-# On an internal error, this function re-throws a 'lambda_timestep_error'
-# condition carrying i, j, nlon, nlat so the caller can enrich the
-# diagnostic with time-step-level context (t, scaled_data dims).
+# Two input checks run first: ts_t, base_timeseries, valid_base and lambda
+# must have the same dims as base_rate, and valid_base must be non-NA and
+# TRUE only where base_rate is finite.
 # ============================================================================
 scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
                                   valid_base, lambda) {
-  nlon <- dim(base_rate)[1]
-  nlat <- dim(base_rate)[2]
-  tryCatch({
-    result <- array(NA_real_, dim = c(nlon, nlat))
-    for (i in 1:nlon) {
-      for (j in 1:nlat) {
-        if (valid_base[i, j]) {
-          if (base_rate[i, j] == 0) {
-            # For true zero-base cells (not NA), carry the raw TS signal.
-            result[i, j] <- ts_t[i, j]
-          } else if (!is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-            fert_diff <- ts_t[i, j] - base_timeseries[i, j]
-            ratio_base <- base_rate[i, j] / base_timeseries[i, j]
-            ratio_term <- ratio_base ^ lambda[i, j]
-            result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
-          }
-          if (!is.na(result[i, j]) && result[i, j] < 0) {
-            result[i, j] <- 0
-          }
-        }
-      }
-    }
-    result
-  }, error = function(e) {
-    stop(structure(
-      class = c("lambda_timestep_error", "error", "condition"),
-      list(
-        message  = e$message,
-        call     = e$call,
-        original = e,
-        i        = i,
-        j        = j,
-        nlon     = nlon,
-        nlat     = nlat
-      )
-    ))
-  })
+  # Mask indexing with mismatched shapes or NA masks fails silently or with
+  # an unhelpful message, so reject such inputs up front.
+  args <- list(ts_t = ts_t, base_timeseries = base_timeseries,
+               valid_base = valid_base, lambda = lambda)
+  bad <- names(args)[!vapply(args, function(a) identical(dim(a), dim(base_rate)),
+                             logical(1))]
+  if (length(bad) > 0) {
+    stop(sprintf("scale_lambda_timestep: dims of %s do not match base_rate dims (%s)",
+                 paste(bad, collapse = ", "),
+                 paste(dim(base_rate), collapse = " x ")))
+  }
+  if (anyNA(valid_base) || any(valid_base & !is.finite(base_rate))) {
+    stop("scale_lambda_timestep: valid_base must be non-NA and TRUE only where base_rate is finite")
+  }
+
+  result <- array(NA_real_, dim = dim(base_rate))
+  zero_mask <- valid_base & base_rate == 0
+  formula_mask <- valid_base & base_rate != 0 &
+    !is.na(base_timeseries) & base_timeseries > 0
+  # For true zero-base cells (not NA), carry the raw TS signal.
+  result[zero_mask] <- ts_t[zero_mask]
+  m <- formula_mask
+  fert_diff <- ts_t[m] - base_timeseries[m]
+  ratio_term <- (base_rate[m] / base_timeseries[m]) ^ lambda[m]
+  result[m] <- base_rate[m] * (1 + (fert_diff / base_rate[m]) * ratio_term)
+  result[!is.na(result) & result < 0] <- 0
+  result
 }
 
 # ============================================================================
@@ -362,7 +356,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   valid_base      <- prep$valid_base
 
   # create output array [lon, lat, time]
-  scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
+  scaled_data <- array(NA_real_, dim = c(nlon, nlat, ntimes))
   
   if (method == "relative") {
     # Relative method keeps the historical behavior: only base_rate > 0 cells
@@ -411,53 +405,50 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     lambda <- compute_lambda(base_rate, base_timeseries, valid_base_lambda)
 
     for (t in 1:ntimes) {
-      tryCatch({
-        scaled_data[, , t] <- scale_lambda_timestep(
-          base_rate, timeseries[, , t], base_timeseries, valid_base_lambda, lambda
+      withCallingHandlers({
+        ts_t <- timeseries[, , t]
+        slice <- scale_lambda_timestep(
+          base_rate, ts_t, base_timeseries, valid_base_lambda, lambda
         )
 
         # Apply delayed-anchor fallback for TS(base_year) < threshold.
         if (any(delayed_anchor_ready)) {
-          ts_t <- timeseries[, , t]
           fallback_cells <- delayed_anchor_ready & is.finite(ts_t)
           if (any(fallback_cells)) {
-            slice <- scaled_data[, , t]
             slice[fallback_cells] <- base_rate[fallback_cells] *
               (ts_t[fallback_cells] / delayed_anchor_value[fallback_cells])
             slice[!is.na(slice) & slice < 0] <- 0
-            scaled_data[, , t] <- slice
           }
         }
 
         # If no anchor year (TS>=threshold) exists for a delayed-anchor cell,
         # fall back to raw TS(t) so values do not remain NA indefinitely.
         if (any(delayed_anchor_unresolved)) {
-          ts_t <- timeseries[, , t]
           unresolved_cells <- delayed_anchor_unresolved & is.finite(ts_t)
           if (any(unresolved_cells)) {
-            slice <- scaled_data[, , t]
             slice[unresolved_cells] <- ts_t[unresolved_cells]
             slice[!is.na(slice) & slice < 0] <- 0
-            scaled_data[, , t] <- slice
           }
         }
-      }, lambda_timestep_error = function(e) {
+
+        # Apply a hard cap for lambda outputs to avoid implausibly high rates.
+        # It comes after both fallbacks so their values are capped too; NA
+        # cells stay NA.
+        slice[!is.na(slice) & slice > lambda_max_rate] <- lambda_max_rate
+
+        scaled_data[, , t] <- slice
+      }, error = function(e) {
+        # Prints the time step t, message and dims for an error from any part
+        # of the per-year body, including the delayed-anchor fallbacks. The
+        # handler returns normally, so the original error then propagates
+        # unchanged with its call stack intact.
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
-        cat(sprintf("  Message: %s\n", e$message))
-        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n",
-                    e$i, e$nlon, e$j, e$nlat))
+        cat(sprintf("  Message: %s\n", conditionMessage(e)))
         cat(sprintf("  scaled_data dims: %d x %d x %d\n",
                     dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
-        stop(e$original)
       })
     }
 
-    # Apply a hard cap for lambda outputs to avoid implausibly high rates.
-    scaled_data[!is.na(scaled_data)] <- pmin(
-      scaled_data[!is.na(scaled_data)],
-      lambda_max_rate
-    )
-    
   } else {
     stop(paste("Unknown scaling method:", method))
   }
@@ -717,7 +708,12 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                             spatial_data_5min = NULL, lon_5min = NULL, lat_5min = NULL,
                             iam = NULL, gcm = NULL,
                             base_timeseries_override = NULL) {
-  
+  # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
+  # useRaster argument: with the option, image() falls back to polygons on non-regular grids
+  # instead of erroring.
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
+
   # Define output PDF file and open device
   # Construct explicit, scenario/method-specific filename aligned with NetCDF naming
   if (tolower(scenario) == "histsoc") {
@@ -1040,7 +1036,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
                       prec = "float",
                       units = "kg ha-1 yr-1",
                       longname = paste("N fertilizer application rate for", crop),
-                      compression = 9,
+                      # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
+                      compression = 6,
                       chunksizes = chunk_sizes,
                       verbose = FALSE)
       
@@ -1112,6 +1109,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
 #   output_dir: Directory to save comparison plots
 # ============================================================================
 compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, output_dir) {
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
   
   print(paste("====== DIAGNOSTIC: Starting compare_relative_lambda for", crop, scenario, "======"))
   
