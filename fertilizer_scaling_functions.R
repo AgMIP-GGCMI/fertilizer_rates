@@ -189,22 +189,14 @@ scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base
 # (at cells where both are valid and positive). Otherwise lambda = 1.
 # ============================================================================
 compute_lambda <- function(base_rate, base_timeseries, valid_base) {
-  nlon <- dim(base_rate)[1]
-  nlat <- dim(base_rate)[2]
-  lambda <- array(1, dim = c(nlon, nlat))
-  for (i in 1:nlon) {
-    for (j in 1:nlat) {
-      if (valid_base[i, j] && !is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-        ts_base_val <- base_timeseries[i, j]
-        spatial_val <- base_rate[i, j]
-        if (ts_base_val < spatial_val) {
-          lambda[i, j] <- sqrt(ts_base_val / spatial_val)
-        } else {
-          lambda[i, j] <- 1
-        }
-      }
-    }
-  }
+  # Default lambda is 1 everywhere; only the cells where the time-series
+  # baseline is strictly less than the spatial baseline get
+  # sqrt(ts / spatial). Cells that are invalid, have NA ts, ts <= 0, or
+  # ts >= spatial all keep the 1 initialization.
+  lambda <- array(1, dim = dim(base_rate))
+  mask <- valid_base & !is.na(base_timeseries) &
+    base_timeseries > 0 & base_timeseries < base_rate
+  lambda[mask] <- sqrt(base_timeseries[mask] / base_rate[mask])
   lambda
 }
 
