@@ -484,3 +484,36 @@ test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data 
   # should be the final result.
   expect_equal(captured$scaled_data, result)
 })
+
+test_that("relative and lambda scaling keep [lon, lat, t] dims on grids with a length-1 dimension", {
+  for (dims in list(c(2, 1), c(1, 1))) {
+    nlon <- dims[1]; nlat <- dims[2]
+    base_rate <- array(100, dim = dims)
+    # TS(base) = 2 >= 1, so lambda takes its ordinary (non-delayed-anchor) path
+    ts <- array(rep(c(2, 3, 4), each = nlon * nlat), dim = c(dims, 3))
+    for (method in c("relative", "lambda")) {
+      out <- scale_with_timeseries(base_rate, ts, base_year = 2020,
+                                   start_year = 2020, end_year = 2022,
+                                   method = method)
+      expect_equal(dim(out), c(dims, 3))
+      expect_equal(as.vector(out[, , 1]), rep(100, nlon * nlat))
+      if (method == "relative") {
+        expect_equal(as.vector(out[, , 3]), rep(200, nlon * nlat))
+      } else {
+        # Formula from the scale_lambda_timestep header, with
+        # lambda = sqrt(ts_base / base) since 0 < ts_base < base
+        lambda <- sqrt(2 / 100)
+        expected <- 100 * (1 + (c(3, 4) - 2) / 100 * (100 / 2)^lambda)
+        expect_equal(as.vector(out[, , 2]), rep(expected[1], nlon * nlat))
+        expect_equal(as.vector(out[, , 3]), rep(expected[2], nlon * nlat))
+        # Same per-cell inputs on a 3x3 grid, which never drops dims
+        ref <- scale_with_timeseries(array(100, c(3, 3)),
+                                     array(rep(c(2, 3, 4), each = 9), c(3, 3, 3)),
+                                     base_year = 2020, start_year = 2020,
+                                     end_year = 2022, method = "lambda")
+        expect_equal(as.vector(out[, , 3]), rep(ref[1, 1, 3], nlon * nlat))
+        expect_equal(expected[2], ref[1, 1, 3])
+      }
+    }
+  }
+})

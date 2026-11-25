@@ -102,6 +102,15 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
 }
 
 
+# Extract one time slice as a [lon, lat] matrix. Plain timeseries[, , t] drops
+# length-1 dimensions (a 1 x n or n x 1 grid), and the dims checks in
+# scale_lambda_timestep then reject the result.
+timeseries_slice <- function(timeseries, t) {
+  slice <- timeseries[, , t, drop = FALSE]
+  dim(slice) <- dim(slice)[1:2]
+  slice
+}
+
 # ============================================================================
 # FUNCTION: prepare_scaling_inputs
 # ============================================================================
@@ -125,7 +134,7 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
       stop(paste("Base year", base_year, "is outside the time series range",
                  start_year, "-", end_year))
     }
-    base_timeseries <- timeseries[, , base_idx]
+    base_timeseries <- timeseries_slice(timeseries, base_idx)
   }
   valid_base <- is.finite(base_rate) & base_rate > 0
   list(
@@ -363,7 +372,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     # are considered valid for scaling.
     for (t in 1:ntimes) {
       scaled_data[, , t] <- scale_relative_timestep(
-        base_rate, timeseries[, , t], base_timeseries, valid_base
+        base_rate, timeseries_slice(timeseries, t), base_timeseries, valid_base
       )
     }
 
@@ -406,7 +415,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
     for (t in 1:ntimes) {
       withCallingHandlers({
-        ts_t <- timeseries[, , t]
+        ts_t <- timeseries_slice(timeseries, t)
         slice <- scale_lambda_timestep(
           base_rate, ts_t, base_timeseries, valid_base_lambda, lambda
         )
