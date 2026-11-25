@@ -177,7 +177,7 @@ Pass an optional threshold percentage to fail the run when coverage drops below 
 
     Rscript tests/coverage.R 90
 
-A companion fast-only report measures the support library files (`fertilizer_scaling_settings.R`, `fertilizer_scaling_plot_diagnostics_functions.R`, `tools/diagnostics_png_harness.R`) using just the fast suite — it runs in seconds and is forward-looking scaffolding for future unit tests of those helpers (today's number is 0% because no fast tests exercise them). It writes `coverage_fast.html` under the same DT/htmltools condition as above:
+A companion fast-only report measures the support library files (`fertilizer_scaling_settings.R`, `fertilizer_scaling_plot_diagnostics_functions.R`, `tools/diagnostics_png_harness.R`, `tools/netcdf_compare.R`) using just the fast suite — it runs in seconds. The PNG harness reports 0% because only the slow suite exercises it, the plot-diagnostics helpers are covered only as far as the fast tests reach them, and `tools/netcdf_compare.R` is covered by its own fast unit tests. It writes `coverage_fast.html` under the same DT/htmltools condition as above:
 
     Rscript tests/coverage_fast.R
 
