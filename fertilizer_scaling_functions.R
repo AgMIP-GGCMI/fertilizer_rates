@@ -1242,8 +1242,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
 #   gcm: GCM name (NULL for histsoc)
 #   output_dir: Directory to save comparison plots
 #
-# Loads the relative and lambda NetCDFs, then delegates plotting to
-# plot_relative_lambda_comparison() with ref_year = base_year (the settings global).
+# Builds the ISIMIP3b file paths, then delegates reading and plotting to
+# compare_relative_lambda_files() with ref_year = base_year (the settings global).
 # ============================================================================
 compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, output_dir) {
   old_opts <- options(preferRaster = TRUE)
@@ -1278,39 +1278,58 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
     return()
   }
   
-  # Load relative method data
-  nc_rel <- nc_open(rel_file)
-  rel_data <- ncvar_get(nc_rel, varid = paste0("fertl_", crop))
-  lon <- ncvar_get(nc_rel, varid = "lon")
-  lat <- ncvar_get(nc_rel, varid = "lat")
-  nc_close(nc_rel)
-
-  
-  # Load lambda method data
-  nc_lambda <- nc_open(lambda_file)
-  lambda_data <- ncvar_get(nc_lambda, varid = paste0("fertl_", crop))
-  nc_close(nc_lambda)
-
-  
-  # Ensure lon and lat are strictly increasing for image.plot
-  # Handle any legacy files with different coordinate ordering
-  if (any(diff(lon) <= 0)) {
-    print("DIAGNOSTIC: lon coordinates not increasing, sorting...")
-    lon_order <- order(lon)
-    lon <- lon[lon_order]
-    rel_data <- rel_data[lon_order, , ]
-    lambda_data <- lambda_data[lon_order, , ]
-
-  }
-    
   # Create comparison PDF
   plot_file <- paste0(output_dir, "/comparison_relative_lambda_", crop, 
                       ifelse(scenario == "histsoc", "_histsoc.pdf",
                              paste0("_", scenario, "_", iam, "_", gcm, ".pdf")))
   
-  plot_relative_lambda_comparison(rel_data, lambda_data, lon, lat,
-                                  start_year, end_year, crop, plot_file,
-                                  ref_year = base_year)
+  compare_relative_lambda_files(rel_file, lambda_file, list(start_year:end_year),
+                                paste0("fertl_", crop), crop, plot_file,
+                                ref_year = base_year)
+}
+
+# ============================================================================
+# FUNCTION: compare_relative_lambda_files
+# ============================================================================
+# Write the relative-vs-lambda comparison PDF from written output files
+#
+# Args:
+#   rel_files: Relative-method files (full paths), in time order
+#   lambda_files: Lambda-method files (full paths), in time order
+#   years_list: List of integer year vectors, one per file (the same for both methods)
+#   var_name: Variable to read from each file
+#   crop: Crop name
+#   plot_file: Full path of the PDF to write
+#   ref_year: Reference year, as in plot_relative_lambda_comparison()
+#
+# Reads both methods with read_timeseries_files(), stops if their grids differ,
+# sorts lon into increasing order (image.plot needs it) and delegates plotting
+# to plot_relative_lambda_comparison() over the years read.
+# ============================================================================
+compare_relative_lambda_files <- function(rel_files, lambda_files, years_list, var_name,
+                                          crop, plot_file, ref_year) {
+  rel <- read_timeseries_files(rel_files, years_list, var_name)
+  lambda <- read_timeseries_files(lambda_files, years_list, var_name)
+  if (!isTRUE(all.equal(rel$lon, lambda$lon)) || !isTRUE(all.equal(rel$lat, lambda$lat))) {
+    stop("compare_relative_lambda_files: relative and lambda grids differ")
+  }
+  lon <- rel$lon
+  rel_data <- rel$data
+  lambda_data <- lambda$data
+
+  # Ensure lon is strictly increasing for image.plot
+  # Handle any legacy files with different coordinate ordering
+  if (any(diff(lon) <= 0)) {
+    print("DIAGNOSTIC: lon coordinates not increasing, sorting...")
+    lon_order <- order(lon)
+    lon <- lon[lon_order]
+    rel_data <- rel_data[lon_order, , , drop = FALSE]
+    lambda_data <- lambda_data[lon_order, , , drop = FALSE]
+  }
+
+  plot_relative_lambda_comparison(rel_data, lambda_data, lon, rel$lat,
+                                  start_year = min(rel$years), end_year = max(rel$years),
+                                  crop = crop, plot_file = plot_file, ref_year = ref_year)
 }
 
 
