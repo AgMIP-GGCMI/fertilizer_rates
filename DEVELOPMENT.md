@@ -143,6 +143,8 @@ If the change is intentional, accept the new baseline:
 
 Then commit the updated snapshot files alongside the code change that produced them.
 
+To render the same diagnostics PNGs by hand, run `Rscript tools/render_diagnostics_png.R --both-methods <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]`; the flag sets `scaling_methods` to `c("relative", "lambda")`, the regression test's method set, whereas the default uses only the methods in `fertilizer_scaling_settings.R` (lambda in production).
+
 ### Environment caveat
 
 Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and the R package versions pinned in `renv.lock`). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
