@@ -13,7 +13,7 @@ source("fertilizer_scaling_plot_diagnostics_functions.R")
 # Aggregate spatial data from 5 arcmin to 0.5 degree resolution
 #
 # Args:
-#   data_5min: Array of data at 5 arcmin resolution [4320 x 2160]
+#   data_5min: Array of data at 5 arcmin resolution [4320 x 2160, lon x lat]
 #   lon_5min: Longitude values for 5 arcmin grid
 #   lat_5min: Latitude values for 5 arcmin grid
 #
@@ -35,6 +35,23 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   nlon_out <- 720
   nlat_out <- 360
   agg_factor <- 6
+
+  # The reshape below would silently scramble or recycle wrongly shaped input.
+  nlon_in <- nlon_out * agg_factor
+  nlat_in <- nlat_out * agg_factor
+  if (length(dim(data_5min)) != 2 ||
+      !isTRUE(all(as.integer(dim(data_5min)) == c(nlon_in, nlat_in)))) {
+    stop("aggregate_to_halfdegree: data_5min must be ", nlon_in, " x ", nlat_in,
+         " [lon, lat], got ", paste(dim(data_5min), collapse = " x "), ".")
+  }
+  if (length(lon_5min) != nlon_in) {
+    stop("aggregate_to_halfdegree: lon_5min must have length ", nlon_in,
+         ", got ", length(lon_5min), ".")
+  }
+  if (length(lat_5min) != nlat_in) {
+    stop("aggregate_to_halfdegree: lat_5min must have length ", nlat_in,
+         ", got ", length(lat_5min), ".")
+  }
 
   # Derive output coordinates by averaging each 6-cell block of the input
   # coordinates rather than synthesizing from scratch, so we inherit
