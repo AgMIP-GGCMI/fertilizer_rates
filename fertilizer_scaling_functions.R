@@ -185,8 +185,9 @@ scale_relative_timestep <- function(base_rate, ts_t, base_timeseries, valid_base
 # FUNCTION: compute_lambda
 # ============================================================================
 # Compute the per-cell lambda exponent used by the lambda scaling method.
-# lambda = sqrt(base_timeseries / base_rate) when base_timeseries < base_rate
-# (at cells where both are valid and positive). Otherwise lambda = 1.
+# lambda = sqrt(base_timeseries / base_rate) where valid_base is TRUE and
+# 0 < base_timeseries < base_rate (base_timeseries non-NA).
+# lambda = 1 everywhere else, including cells where base_rate == 0.
 # ============================================================================
 compute_lambda <- function(base_rate, base_timeseries, valid_base) {
   # Default lambda is 1 everywhere; only the cells where the time-series
