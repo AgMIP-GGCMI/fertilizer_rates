@@ -9,29 +9,36 @@
 # files have a "<funcgroup>" variable (e.g. "fertl_c4ann") with
 # "lon"/"lat"/"time" dims.
 
-make_5min_spatial_nc <- function(path, input_crop, lon, lat,
-                                 data = NULL, time = NULL) {
-  nlon <- length(lon); nlat <- length(lat)
-  dim_lon <- ncdf4::ncdim_def("longitude", "degrees_east", lon)
-  dim_lat <- ncdf4::ncdim_def("latitude", "degrees_north", lat)
-  if (!is.null(time)) {
-    dim_time <- ncdf4::ncdim_def("time", "years", time)
-    dims <- list(dim_lon, dim_lat, dim_time)
-    if (is.null(data)) {
-      data <- array(100, dim = c(nlon, nlat, length(time)))
-    }
-  } else {
-    dims <- list(dim_lon, dim_lat)
-    if (is.null(data)) {
-      data <- matrix(100, nrow = nlon, ncol = nlat)
-    }
-  }
-  ncv <- ncdf4::ncvar_def(paste0(input_crop, "Napprate"), "kg ha-1 yr-1",
-                          dim = dims, missval = 1e20, prec = "float")
-  nc <- ncdf4::nc_create(path, list(ncv))
-  ncdf4::ncvar_put(nc, ncv, data)
+# Write one or more variables on a [lon, lat] grid, with an optional time
+# dimension. vars: named list of arrays. Used for NPKGRIDS/CROPGRIDS-style
+# files (2-D, "lon"/"lat") and, through make_5min_spatial_nc(), for the
+# Mueller et al. 5-arcmin files ("longitude"/"latitude", optional time).
+make_grids_nc <- function(path, lon, lat, vars, dim_names = c("lon", "lat"),
+                          units = "-", missval = NULL, time = NULL) {
+  dims <- list(ncdf4::ncdim_def(dim_names[1], "degrees_east", lon),
+               ncdf4::ncdim_def(dim_names[2], "degrees_north", lat))
+  if (!is.null(time)) dims[[3]] <- ncdf4::ncdim_def("time", "years", time)
+  ncvs <- lapply(names(vars), function(nm)
+    ncdf4::ncvar_def(nm, units, dims, missval = missval, prec = "float"))
+  nc <- ncdf4::nc_create(path, ncvs)
+  for (k in seq_along(ncvs)) ncdf4::ncvar_put(nc, ncvs[[k]], vars[[k]])
   ncdf4::nc_close(nc)
   invisible(path)
+}
+
+make_5min_spatial_nc <- function(path, input_crop, lon, lat,
+                                 data = NULL, time = NULL) {
+  if (is.null(data)) {
+    data <- if (is.null(time)) {
+      matrix(100, nrow = length(lon), ncol = length(lat))
+    } else {
+      array(100, dim = c(length(lon), length(lat), length(time)))
+    }
+  }
+  make_grids_nc(path, lon, lat,
+                setNames(list(data), paste0(input_crop, "Napprate")),
+                dim_names = c("longitude", "latitude"),
+                units = "kg ha-1 yr-1", missval = 1e20, time = time)
 }
 
 make_ts_nc <- function(path, var_name, lon, lat, nyears,
