@@ -52,7 +52,7 @@ The baselines are sliced from freshly generated full outputs (`<out_base>/ssp126
      ncv <- ncvar_def(name = var_name, units = var_atts$units,
                       dim = list(dim_lon, dim_lat, dim_time),
                       missval = var_atts$`_FillValue`, prec = "float",
-                      longname = var_atts$long_name, compression = 9, verbose = FALSE)
+                      longname = var_atts$long_name, compression = 6, verbose = FALSE)
      out_nc <- nc_create(dst, list(ncv), verbose = FALSE)
      ncvar_put(out_nc, ncv, data, start = c(1, 1, 1), count = c(-1, -1, 3))
      for (a in names(glb_atts)) ncatt_put(out_nc, 0, a, glb_atts[[a]])

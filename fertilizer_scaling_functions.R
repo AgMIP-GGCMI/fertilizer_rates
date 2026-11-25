@@ -1018,7 +1018,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
                       prec = "float",
                       units = "kg ha-1 yr-1",
                       longname = paste("N fertilizer application rate for", crop),
-                      compression = 9,
+                      # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
+                      compression = 6,
                       chunksizes = chunk_sizes,
                       verbose = FALSE)
       

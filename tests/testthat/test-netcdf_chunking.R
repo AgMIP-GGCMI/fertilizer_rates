@@ -26,7 +26,7 @@ test_that("NetCDF variable chunking is full-space x single-time", {
     dim = list(dim_lon, dim_lat, dim_time),
     missval = 1.e+20,
     prec = "float",
-    compression = 9,
+    compression = 6,
     chunksizes = chunk_sizes,
     verbose = FALSE
   )
