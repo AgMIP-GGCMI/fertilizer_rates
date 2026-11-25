@@ -1,7 +1,7 @@
 # ============================================================================
-# Shared Settings for fertilizer_scaling.R
+# Shared Settings for fertilizer_scaling_isimip3b.R
 # ============================================================================
-# Sourced by fertilizer_scaling.R, by the testthat setup.R files, and by
+# Sourced by fertilizer_scaling_isimip3b.R, by the testthat setup.R files, and by
 # tools/render_diagnostics_png.R. Loads required libraries and defines the
 # top-level constants and path env-var defaults used by main() and helpers.
 #

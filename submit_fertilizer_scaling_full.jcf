@@ -24,8 +24,8 @@ source /p/system/modulefiles/defaults/piam/module_load_piam
 set -u
 
 SCRIPT_DIR="/p/projects/macmit/users/cmueller/repos/AgMIP-GGCMI/fertilizer_rates"
-if [[ ! -f "$SCRIPT_DIR/fertilizer_scaling.R" ]]; then
-  echo "ERROR: fertilizer_scaling.R not found in working directory: $SCRIPT_DIR"
+if [[ ! -f "$SCRIPT_DIR/fertilizer_scaling_isimip3b.R" ]]; then
+  echo "ERROR: fertilizer_scaling_isimip3b.R not found in working directory: $SCRIPT_DIR"
   exit 4
 fi
 
@@ -71,14 +71,14 @@ echo "[$(date -Iseconds)] Job ${SLURM_JOB_ID:-NA}, array task $SLURM_ARRAY_TASK_
 echo "[$(date -Iseconds)] CWD: $(pwd)"
 echo "[$(date -Iseconds)] Script dir: $SCRIPT_DIR"
 echo "[$(date -Iseconds)] Submit dir: ${SLURM_SUBMIT_DIR:-NA}"
-echo "[$(date -Iseconds)] Running: Rscript --vanilla fertilizer_scaling.R $TASK"
+echo "[$(date -Iseconds)] Running: Rscript --vanilla fertilizer_scaling_isimip3b.R $TASK"
 
 # Use module/system library stack on batch nodes; do not auto-activate project renv.
 export RENV_CONFIG_AUTOLOADER_ENABLED=FALSE
 
 # TASK is intentionally split into positional CLI args.
 # shellcheck disable=SC2086
-Rscript --vanilla fertilizer_scaling.R $TASK
+Rscript --vanilla fertilizer_scaling_isimip3b.R $TASK
 
 RC=$?
 echo "[$(date -Iseconds)] Finished with exit code $RC"

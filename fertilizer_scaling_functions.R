@@ -1,7 +1,7 @@
 # ============================================================================
-# Shared Function Definitions for fertilizer_scaling.R
+# Shared Function Definitions for fertilizer_scaling_isimip3b.R
 # ============================================================================
-# Sourced by fertilizer_scaling.R. Keep this file function-definitions-only so
+# Sourced by fertilizer_scaling_isimip3b.R. Keep this file function-definitions-only so
 # it is safe to source from tests or other scripts without side effects.
 # ============================================================================
 

@@ -4,7 +4,7 @@ R scripts that prepare gridded nitrogen-fertilizer application rates for the agr
 
 ## What this does
 
-`fertilizer_scaling.R` produces per-crop, half-degree (0.5°), annual N-fertilizer application-rate NetCDF files covering 1850–2100 for the 15 ISIMIP3b / GGCMI crops (`swh`, `wwh`, `mai`, `ri1`, `ri2`, `soy`, `mil`, `sor`, `pea`, `sgb`, `cas`, `rap`, `sun`, `nut`, `sgc`). It combines two inputs per crop:
+`fertilizer_scaling_isimip3b.R` (the ISIMIP3b group III script; an ISIMIP4 script is coming in this branch) produces per-crop, half-degree (0.5°), annual N-fertilizer application-rate NetCDF files covering 1850–2100 for the 15 ISIMIP3b / GGCMI crops (`swh`, `wwh`, `mai`, `ri1`, `ri2`, `soy`, `mil`, `sor`, `pea`, `sgb`, `cas`, `rap`, `sun`, `nut`, `sgc`). It combines two inputs per crop:
 
 - a **spatial baseline** at 5 arc-minute resolution from Mueller et al. (year-2000 sub-national application rates), aggregated up to 0.5°, and
 - a **temporal time series** at 0.5° from ISIMIP3b's socioeconomic inputs, indexed by crop functional group (`fertl_c3ann`, `fertl_c4ann`, `fertl_c3nfx`, `fertl_c3per`, `fertl_c4per`).
@@ -50,13 +50,13 @@ By default the script reads its inputs from, and writes its outputs to, fixed pa
 Run from the repo root. Each invocation processes one crop for one scenario:
 
 ```bash
-Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]
+Rscript fertilizer_scaling_isimip3b.R <crop> <scenario> [iam] [gcm]
 
 # Historical, 1850–2014
-Rscript fertilizer_scaling.R mai histsoc
+Rscript fertilizer_scaling_isimip3b.R mai histsoc
 
 # Future, 2015–2100 (iam and gcm are required)
-Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
+Rscript fertilizer_scaling_isimip3b.R mai ssp585 image gfdl-esm4
 ```
 
 | Argument | Values |

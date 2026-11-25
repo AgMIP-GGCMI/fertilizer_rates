@@ -26,7 +26,7 @@ The baselines are sliced from freshly generated full outputs (`<out_base>/ssp126
    main("mai", "ssp126", "image", "gfdl-esm4")
    ```
 
-   Don't use `Rscript fertilizer_scaling.R mai ssp126 image gfdl-esm4` here. The production settings set `scaling_methods <- c("lambda")`, so that command (and `main()` without the override above) writes only the lambda output, and step 2 would re-slice a stale relative file from an earlier run. The overrides go after sourcing the settings so they aren't overwritten.
+   Don't use `Rscript fertilizer_scaling_isimip3b.R mai ssp126 image gfdl-esm4` here. The production settings set `scaling_methods <- c("lambda")`, so that command (and `main()` without the override above) writes only the lambda output, and step 2 would re-slice a stale relative file from an earlier run. The overrides go after sourcing the settings so they aren't overwritten.
 
    The outputs go to the temporary `out_base` directory rather than to `FERT_OUTPUT_BASE_PATH` (which the `.Renviron` described in [Input data and paths](../../../DEVELOPMENT.md#input-data-and-paths) points at `data/outputs/`), so regenerating leaves your local `data/outputs/` untouched.
 2. Re-slice both methods with the snippet below (run from the repo root, in the same R session as step 1):
