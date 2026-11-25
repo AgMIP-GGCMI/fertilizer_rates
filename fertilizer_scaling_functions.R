@@ -206,51 +206,43 @@ compute_lambda <- function(base_rate, base_timeseries, valid_base) {
 # ============================================================================
 # Compute one [lon, lat] scaled slice using the lambda scaling method.
 #   scaled = base * [1 + (ts_t - ts_base) / base * (base / ts_base) ^ lambda]
-# Clamped to >= 0. Invalid cells remain NA.
+# Zero base_rate cells (where valid_base is TRUE) take the raw ts_t instead.
+# Clamped to >= 0. Cells with valid_base FALSE, and cells with a nonzero
+# base_rate whose base_timeseries is NA or <= 0, remain NA.
 #
-# On an internal error, this function re-throws a 'lambda_timestep_error'
-# condition carrying i, j, nlon, nlat so the caller can enrich the
-# diagnostic with time-step-level context (t, scaled_data dims).
+# Two input checks run first: ts_t, base_timeseries, valid_base and lambda
+# must have the same dims as base_rate, and valid_base must be non-NA and
+# TRUE only where base_rate is finite.
 # ============================================================================
 scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
                                   valid_base, lambda) {
-  nlon <- dim(base_rate)[1]
-  nlat <- dim(base_rate)[2]
-  tryCatch({
-    result <- array(NA_real_, dim = c(nlon, nlat))
-    for (i in 1:nlon) {
-      for (j in 1:nlat) {
-        if (valid_base[i, j]) {
-          if (base_rate[i, j] == 0) {
-            # For true zero-base cells (not NA), carry the raw TS signal.
-            result[i, j] <- ts_t[i, j]
-          } else if (!is.na(base_timeseries[i, j]) && base_timeseries[i, j] > 0) {
-            fert_diff <- ts_t[i, j] - base_timeseries[i, j]
-            ratio_base <- base_rate[i, j] / base_timeseries[i, j]
-            ratio_term <- ratio_base ^ lambda[i, j]
-            result[i, j] <- base_rate[i, j] * (1 + (fert_diff / base_rate[i, j]) * ratio_term)
-          }
-          if (!is.na(result[i, j]) && result[i, j] < 0) {
-            result[i, j] <- 0
-          }
-        }
-      }
-    }
-    result
-  }, error = function(e) {
-    stop(structure(
-      class = c("lambda_timestep_error", "error", "condition"),
-      list(
-        message  = e$message,
-        call     = e$call,
-        original = e,
-        i        = i,
-        j        = j,
-        nlon     = nlon,
-        nlat     = nlat
-      )
-    ))
-  })
+  # Mask indexing with mismatched shapes or NA masks fails silently or with
+  # an unhelpful message, so reject such inputs up front.
+  args <- list(ts_t = ts_t, base_timeseries = base_timeseries,
+               valid_base = valid_base, lambda = lambda)
+  bad <- names(args)[!vapply(args, function(a) identical(dim(a), dim(base_rate)),
+                             logical(1))]
+  if (length(bad) > 0) {
+    stop(sprintf("scale_lambda_timestep: dims of %s do not match base_rate dims (%s)",
+                 paste(bad, collapse = ", "),
+                 paste(dim(base_rate), collapse = " x ")))
+  }
+  if (anyNA(valid_base) || any(valid_base & !is.finite(base_rate))) {
+    stop("scale_lambda_timestep: valid_base must be non-NA and TRUE only where base_rate is finite")
+  }
+
+  result <- array(NA_real_, dim = dim(base_rate))
+  zero_mask <- valid_base & base_rate == 0
+  formula_mask <- valid_base & base_rate != 0 &
+    !is.na(base_timeseries) & base_timeseries > 0
+  # For true zero-base cells (not NA), carry the raw TS signal.
+  result[zero_mask] <- ts_t[zero_mask]
+  m <- formula_mask
+  fert_diff <- ts_t[m] - base_timeseries[m]
+  ratio_term <- (base_rate[m] / base_timeseries[m]) ^ lambda[m]
+  result[m] <- base_rate[m] * (1 + (fert_diff / base_rate[m]) * ratio_term)
+  result[!is.na(result) & result < 0] <- 0
+  result
 }
 
 # ============================================================================
@@ -426,14 +418,15 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
             scaled_data[, , t] <- slice
           }
         }
-      }, lambda_timestep_error = function(e) {
+      }, error = function(e) {
+        # Reports the time step t for errors from any part of the per-year
+        # body, including the delayed-anchor fallbacks, then re-throws the
+        # original error.
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
-        cat(sprintf("  Message: %s\n", e$message))
-        cat(sprintf("  Last indices: i=%d (max=%d), j=%d (max=%d)\n",
-                    e$i, e$nlon, e$j, e$nlat))
+        cat(sprintf("  Message: %s\n", conditionMessage(e)))
         cat(sprintf("  scaled_data dims: %d x %d x %d\n",
                     dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
-        stop(e$original)
+        stop(e)
       })
     }
 

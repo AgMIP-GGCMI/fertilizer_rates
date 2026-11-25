@@ -326,17 +326,15 @@ test_that("lambda delayed-anchor unresolved cells fall back to raw TS(t)", {
   expect_true(all(is.finite(result[1, 1, ])))
 })
 
-test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims", {
+test_that("lambda loop reports the time step for any error and re-throws it", {
   fx <- make_harness_fixture()
+  calls <- 0
   local_mocked_globals(
     scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
                                      valid_base, lambda) {
-      stop(structure(
-        class = c("lambda_timestep_error", "error", "condition"),
-        list(message = "boom",
-             original = simpleError("boom"),
-             i = 1, j = 1, nlon = 2, nlat = 2)
-      ))
+      calls <<- calls + 1
+      if (calls == 2) stop("boom")
+      base_rate
     }
   )
   # capture.output propagates errors and loses the captured text, so use
@@ -355,11 +353,10 @@ test_that("scale_with_timeseries enriches lambda_timestep_error with t and dims"
   out <- readLines(tmpfile)
 
   expect_s3_class(err, "error")
-  expect_equal(err$message, "boom")
-  expect_true(any(grepl("ERROR in lambda loop at time step t=1", out)))
+  expect_match(conditionMessage(err), "boom")
+  expect_true(any(grepl("ERROR in lambda loop at time step t=2:", out)))
   expect_true(any(grepl("Message: boom", out)))
   expect_true(any(grepl("scaled_data dims: 2 x 2 x 3", out)))
-  expect_true(any(grepl("Last indices: i=1 \\(max=2\\), j=1 \\(max=2\\)", out)))
 })
 
 test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data and context", {
