@@ -60,7 +60,7 @@ test_that("compare_relative_lambda leaves preferRaster as it found it", {
     compare_relative_lambda("mai", "histsoc", output_dir = tmp)
   )
 
-  expect_false(any(grepl("ERROR IN compare_relative_lambda", out)))
+  expect_false(any(grepl("ERROR IN plot_relative_lambda_comparison", out)))
   expect_true(file.exists(file.path(tmp, "comparison_relative_lambda_mai_histsoc.pdf")))
   expect_false(getOption("preferRaster"))
 })

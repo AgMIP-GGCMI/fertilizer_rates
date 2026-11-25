@@ -1134,6 +1134,9 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
 #   iam: IAM model name (NULL for histsoc)
 #   gcm: GCM name (NULL for histsoc)
 #   output_dir: Directory to save comparison plots
+#
+# Loads the relative and lambda NetCDFs, then delegates plotting to
+# plot_relative_lambda_comparison() with ref_year = base_year (the settings global).
 # ============================================================================
 compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, output_dir) {
   old_opts <- options(preferRaster = TRUE)
@@ -1198,6 +1201,41 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
                       ifelse(scenario == "histsoc", "_histsoc.pdf",
                              paste0("_", scenario, "_", iam, "_", gcm, ".pdf")))
   
+  plot_relative_lambda_comparison(rel_data, lambda_data, lon, lat,
+                                  start_year, end_year, crop, plot_file,
+                                  ref_year = base_year)
+}
+
+
+# ============================================================================
+# FUNCTION: plot_relative_lambda_comparison
+# ============================================================================
+# Write the relative-vs-lambda comparison PDF from in-memory arrays
+#
+# Args:
+#   rel_data: Relative-method data [lon, lat, time]
+#   lambda_data: Lambda-method data [lon, lat, time]
+#   lon: Longitude values (strictly increasing)
+#   lat: Latitude values
+#   start_year: Year of the first time step
+#   end_year: Year of the last time step
+#   crop: Crop name
+#   plot_file: Full path of the PDF to write
+#   ref_year: Reference year for the base-year map panels, the r<1 mask
+#             panels and the base-year density panel. When it lies outside
+#             start_year..end_year, the base-year maps and ratio diagnostics are
+#             skipped, the masks use the first year as reference and the density
+#             panel shows the middle year
+# ============================================================================
+plot_relative_lambda_comparison <- function(rel_data, lambda_data, lon, lat,
+                                            start_year, end_year, crop,
+                                            plot_file, ref_year) {
+  # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
+  # useRaster argument: with the option, image() falls back to polygons on non-regular grids
+  # instead of erroring.
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
+
   tryCatch({
   pdf(plot_file, width = 16, height = 14)
   # Increase right margin to give legend labels more space
@@ -1347,8 +1385,8 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
                axis.args = list(at = c(0, 1), labels = c("no", "yes")))
   }
   
-  # Get base year index (2000 relative to start_year)
-  base_idx <- base_year - start_year + 1
+  # Index of the reference year relative to start_year
+  base_idx <- ref_year - start_year + 1
   first_idx <- 1
   last_idx <- dim(rel_data)[3]
   mid_idx <- last_idx %/% 2
@@ -1441,12 +1479,12 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   
   # ===== NEW PAGE: r<1 masks (decreases vs reference year) =====
   # Start a new page with 2x2 layout; show start and end year masks
-  # For ssp data (base_year out of range), use first_year as reference
+  # For ssp data (ref_year out of range), use first_year as reference
   par(mfrow = c(2, 2), mar = c(4, 4, 3, 6))
   
-  # Determine reference year: use base_year if in range, else first_year
+  # Determine reference year: use ref_year if in range, else first_year
   ref_idx <- if (base_idx >= 1 && base_idx <= last_idx) base_idx else first_idx
-  ref_year <- if (base_idx >= 1 && base_idx <= last_idx) base_year else start_year
+  mask_ref_year <- if (base_idx >= 1 && base_idx <= last_idx) ref_year else start_year
   
   rel_ref <- rel_data[, , ref_idx]
   
@@ -1459,7 +1497,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   mask_first[valid_first] <- 0
   mask_first[valid_first & r_first < 1] <- 1
   plot_mask_panel(lon, lat, mask_first, 
-                  paste(crop, "- r<1 (Year", start_year, "vs", ref_year, ")"))
+                  paste(crop, "- r<1 (Year", start_year, "vs", mask_ref_year, ")"))
 
   # Last year mask
   rel_last <- rel_data[, , last_idx]
@@ -1470,7 +1508,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   mask_last[valid_last] <- 0
   mask_last[valid_last & r_last < 1] <- 1
   plot_mask_panel(lon, lat, mask_last, 
-                  paste(crop, "- r<1 (Year", end_year, "vs", ref_year, ")"))
+                  paste(crop, "- r<1 (Year", end_year, "vs", mask_ref_year, ")"))
   
   # ===== SCATTER/HEATMAP PLOTS =====
   # Reset layout to 4x3 for density plots
@@ -1523,19 +1561,18 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
     plot.new(); text(0.5, 0.5, "Insufficient last year data")
   }
   
-  # Heatmap 4: Year 2000 or middle year (2D density)
-  if (scenario == "histsoc") {
-    if (base_idx >= 1 && base_idx <= last_idx) {
-      rel_base_flat <- as.vector(rel_data[, , base_idx])
-      lambda_base_flat <- as.vector(lambda_data[, , base_idx])
-      valid_base <- is.finite(rel_base_flat) & is.finite(lambda_base_flat) & rel_base_flat > 0 & lambda_base_flat > 0
-      if (sum(valid_base) > 10) {
-        x_base <- rel_base_flat[valid_base]
-        y_base <- lambda_base_flat[valid_base]
-        plot_density_heatmap(x_base, y_base, main_title = "Density: Rates Year 2000")
-      } else {
-        plot.new(); text(0.5, 0.5, "Insufficient 2000 data")
-      }
+  # Heatmap 4: base-year rates when the reference year is within the series
+  # (historical runs), otherwise middle-year rates (future runs)
+  if (base_idx >= 1 && base_idx <= last_idx) {
+    rel_base_flat <- as.vector(rel_data[, , base_idx])
+    lambda_base_flat <- as.vector(lambda_data[, , base_idx])
+    valid_base <- is.finite(rel_base_flat) & is.finite(lambda_base_flat) & rel_base_flat > 0 & lambda_base_flat > 0
+    if (sum(valid_base) > 10) {
+      x_base <- rel_base_flat[valid_base]
+      y_base <- lambda_base_flat[valid_base]
+      plot_density_heatmap(x_base, y_base, main_title = "Density: Rates Year 2000")
+    } else {
+      plot.new(); text(0.5, 0.5, "Insufficient 2000 data")
     }
   } else {
     # Middle year for future scenario
@@ -1557,7 +1594,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   dev.off()
   print(paste("Comparison plot saved to", plot_file))
   }, error = function(e) {
-    print("============ ERROR IN compare_relative_lambda ============")
+    print("============ ERROR IN plot_relative_lambda_comparison ============")
     print(paste("Error message:", e$message))
     print("Stack trace:")
     print(traceback())
