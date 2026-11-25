@@ -21,7 +21,7 @@
 suppressPackageStartupMessages(library(testthat))
 
 if (!requireNamespace("covr", quietly = TRUE)) {
-  stop("covr is not installed. Install with `renv::install(\"covr\")`.")
+  stop("covr is not installed. It is locked in renv.lock; run `renv::restore()`.")
 }
 
 src_file <- "fertilizer_scaling_functions.R"
@@ -76,15 +76,14 @@ pct <- covr::percent_coverage(cov, by = "line")
 cat(sprintf("\nLine coverage: %.2f%%\n", pct))
 
 # Per-line HTML report, gitignored. Skipped when DT/htmltools aren't
-# available — those are covr::report()'s rendering deps but are not in
-# renv.lock. Install with `renv::install(c("DT", "htmltools"))` to
-# enable HTML output.
+# available — those are covr::report()'s rendering deps, locked in
+# renv.lock, so `renv::restore()` provides them.
 if (requireNamespace("DT", quietly = TRUE) &&
     requireNamespace("htmltools", quietly = TRUE)) {
   covr::report(cov, file = "coverage.html", browse = FALSE)
   cat("HTML report: coverage.html\n")
 } else {
-  cat("HTML report skipped: install DT and htmltools to enable.\n")
+  cat("HTML report skipped: DT and htmltools are not installed. They are locked in renv.lock; run `renv::restore()`.\n")
 }
 
 if (!is.na(threshold)) {

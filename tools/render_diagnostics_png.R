@@ -4,6 +4,9 @@
 # ============================================================================
 # CLI wrapper around render_diagnostics_to_png(). See
 # tools/diagnostics_png_harness.R for the shadowing logic.
+# Renders with whatever `scaling_methods` the settings file sets (lambda only in
+# production). Unlike the regression test, it does not enable the relative method,
+# so its output won't match the test's snapshots page for page.
 #
 # Usage:
 #   Rscript tools/render_diagnostics_png.R <png_output_dir> <crop> <scenario> [<iam>] [<gcm>]

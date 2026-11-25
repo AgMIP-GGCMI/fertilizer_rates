@@ -1,6 +1,6 @@
 # tests/testthat/test-compare_relative_lambda_tick_orig_zero.R
 #
-# Covers line 1032 (the "ensure 0 in tick_orig" injection inside
+# Covers the "ensure 0 in tick_orig" injection (the `Ensure 0 present` block, inside
 # plot_map_comp) by installing a pretty() shadow into
 # compare_relative_lambda's enclosing env. The shadow returns ticks
 # that omit 0, forcing the !any(abs(tick_orig) < eps) guard to fire.
@@ -26,7 +26,7 @@ test_that("plot_map_comp injects 0 into tick_orig when pretty() omits it", {
 
   # Minimal valid rel + lambda histsoc files so compare_relative_lambda
   # gets past file-existence and lon-sort checks and reaches the
-  # diverging+log_scale plot_map_comp call (line 1024+).
+  # diverging+log_scale plot_map_comp call (the `log_scale && max_abs_orig > 0` branch).
   lon <- seq(-179.75, by = 0.5, length.out = 4)
   lat <- seq(-89.75, by = 0.5, length.out = 3)
   rel_dir <- file.path(tmp, "histsoc", "relative")
@@ -40,7 +40,7 @@ test_that("plot_map_comp injects 0 into tick_orig when pretty() omits it", {
   )
   # Make lambda differ from rel slightly so diff_2000 has nonzero,
   # finite values and plot_map_comp enters the diverging+log_scale
-  # path (line 1024) rather than the empty-valid-data fallback.
+  # path (the `log_scale && max_abs_orig > 0` branch) rather than the empty-valid-data fallback.
   lambda_data <- array(75, dim = c(length(lon), length(lat), 165))
   make_ts_nc(
     file.path(lambda_dir, "n-fertilizer_mai_histsoc_lambda_annual_1850_2014.nc"),

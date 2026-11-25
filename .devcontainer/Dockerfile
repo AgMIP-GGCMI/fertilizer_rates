@@ -79,9 +79,11 @@ RUN ARCH=$(dpkg --print-architecture) \
  && dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" \
  && rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-# Install the R packages the scripts use, plus renv (for anyone who wants
-# to run `renv::restore()` manually against the committed renv.lock).
-RUN R -q -e 'install.packages(c("renv","ncdf4","testthat","fields","abind","MASS","lintr"), repos = "https://cloud.r-project.org")'
+# Install only renv. The project's R packages come from renv.lock via
+# `renv::restore()` (the devcontainer's postStartCommand, run after the firewall on every start), which compiles
+# them from source into renv/library, so the apt build dependencies above
+# must stay.
+RUN R -q -e 'install.packages("renv", repos = "https://cloud.r-project.org")'
 
 # Switch to non-root user
 USER node

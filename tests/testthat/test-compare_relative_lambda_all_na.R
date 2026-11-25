@@ -2,9 +2,9 @@
 #
 # Feeds all-NA rel + lambda NetCDFs to compare_relative_lambda() to
 # exercise:
-#   - lines 1048-1049 (plot_map_comp empty-valid-data fallback)
-#   - lines 1294, 1305, 1316, 1330 (histsoc "insufficient ... data")
-#   - line 1345 (future "insufficient middle year data")
+#   - plot_map_comp's empty-valid-data fallback (the `else` of `length(valid_data) > 0`, zlim <- c(0, 1))
+#   - the histsoc "Insufficient trend/first year/last year/2000 data" panels
+#   - the future-scenario "Insufficient middle year data" panel
 
 make_pair_all_na <- function(root, crop, scenario,
                              iam = NULL, gcm = NULL) {

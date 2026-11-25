@@ -4,7 +4,7 @@ Developer-facing companion to [README.md](README.md). Read that for what the pro
 
 ## Devcontainer setup
 
-This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts and tests use pre-installed (the current CRAN versions at image build time, not the versions pinned in `renv.lock`). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
+This repo ships a `.devcontainer` that runs Claude Code inside a firewalled sandbox with R 4.5 and the R packages the scripts, tests and dev tools use installed from `renv.lock` (restored into `renv/library` on every container start: the first start compiles everything, later starts are a no-op unless `renv.lock` changed). The Superpowers Claude Code plugin is pre-configured at the project scope so it loads automatically the first time you trust the folder.
 
 ### Prerequisites
 
@@ -28,7 +28,7 @@ code .
 
 Then: Command Palette → **"Dev Containers: Reopen in Container"**.
 
-First build takes several minutes (R package compilation). Subsequent opens are fast thanks to image caching. The container's firewall activates automatically via the `postStartCommand` and verifies itself by confirming `https://example.com` is unreachable while `https://api.github.com` is.
+First start takes a few minutes: the image only installs `renv`, and the container's `postStartCommand` then compiles the R packages from `renv.lock` (see [R packages](#r-packages)); VS Code waits for this restore to finish before connecting, because `waitFor` is `postStartCommand`. Later opens are fast because `renv/library` persists on the host through the workspace bind mount. The container's firewall activates automatically via the `postStartCommand` and verifies itself by confirming `https://example.com` is unreachable while `https://api.github.com` is.
 
 ### First-run inside the container
 
@@ -52,7 +52,7 @@ If you change the `Dockerfile`, the firewall script, or `devcontainer.json`: Com
 
 ### R packages
 
-R packages (`ncdf4`, `testthat`, `fields`, `abind`, `MASS`, `lintr`) are baked into the image and resolved via `RENV_CONFIG_EXTERNAL_LIBRARIES`, so the repo's `.Rprofile` (which activates renv) still finds them. `renv.lock` is the authoritative dependency manifest; to install a new package, run `install.packages("pkg")` inside the container and — if you want the lockfile to reflect it — then `renv::snapshot()` and commit `renv.lock`.
+R packages come from `renv.lock`, the single source of truth. The image contains only `renv`; the container's `postStartCommand` runs `renv::restore(prompt = FALSE)` after the firewall comes up (CRAN is allowlisted), which installs the locked versions into `renv/library` (`RENV_CONFIG_CACHE_ENABLED=FALSE` makes these real copies rather than links into a cache that a rebuild would lose). The first start compiles every package from source, which took about 2 minutes for 76 packages on an arm64 machine with a fast connection (expect longer on slower hardware); the packages then persist in `renv/library` (on the host through the workspace bind mount), so later starts and rebuilds restore only what changed and are quick. To add a package: run `install.packages("pkg")` inside the container; make sure code refers to the package (for a dev-only tool, declare it in `tools/dev_dependencies.R`), because snapshots are implicit and only record packages the code uses; then run `renv::snapshot()` and commit `renv.lock`. If the restore fails (network, a compile error), the firewall is already up and the error appears in the container's start log; fix the cause and rerun `Rscript -e 'renv::restore()'` from `/workspace`, which skips packages already installed. Because the restore runs on every start, a package you installed or upgraded but haven't recorded with `renv::snapshot()` is reverted to the locked version on the next start, so snapshot before restarting; packages not in the lock are left alone. After pulling a change to `renv.lock`, restarting the container restores it, or run `renv::restore()` directly. If `renv::restore()` ever reports that the dependency tree was repaired, the lockfile is incomplete: run `renv::snapshot()` and commit `renv.lock`.
 
 ## Input data and paths
 
@@ -103,7 +103,7 @@ data/
 
 ### Missing inputs
 
-Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing does stop with an error.)
+Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing, or lacks the crop's variable, does stop with an error: `Time series file does not exist: <path>` or `Variable <funcgroup> not found in time series file`.)
 
 ## Testing
 
@@ -111,7 +111,7 @@ Run the full test suite (unit tests + PNG regression tests):
 
     Rscript tests/testthat.R
 
-The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. Each scenario takes ~30–40 seconds, so the full suite takes a few minutes.
+The PNG regression tests render diagnostic plots for two reference scenarios (`mai histsoc` and `mai ssp126 image gfdl-esm4`) and compare them byte-for-byte against committed baseline PNGs. The slow suite takes about 50 seconds, and the full suite (fast and slow together) about a minute. The renders enable both scaling methods (relative and lambda) even though production runs lambda only, so the baseline PNGs include relative-method and relative-vs-lambda comparison pages, and the NetCDF baselines include a relative-method file.
 
 To skip the slow tests during rapid iteration:
 
@@ -129,13 +129,13 @@ The PNG regression tests run `main()` on real inputs, found through `FERT_BASE_P
 
 Run the test and coverage scripts from the repo root (`Rscript tests/testthat.R`, not `cd tests && Rscript testthat.R`); otherwise `.Renviron` isn't loaded and the tests look for inputs at the cluster paths.
 
-If the inputs can't be found, the suite does not say so directly. Look in the test output for the `Input file does not exist:` or `Time series file does not exist:` lines that `main()` prints (see [Missing inputs](#missing-inputs)). In that case the `mai histsoc` test is reported as **skipped ("empty test")**, because `main()` returns early and produces no PNGs to compare, and the `mai ssp126` test fails, either on a missing output file or with that same `does not exist` message as an error.
+If the inputs can't be found, the suite does not say so directly. Look in the test output for the `Input file does not exist:` or `Time series file does not exist:` lines that `main()` prints (see [Missing inputs](#missing-inputs)). In that case the `mai histsoc` test is reported as **skipped ("empty test")**, because `main()` returns early and produces no PNGs to compare, and the `mai ssp126` test fails, either on a missing output file or with that same `does not exist` message as an error. Even with the inputs present, the slow suite reports 2 expected "empty test" skips (from the relative-method base-year and relative-changes checks) and 1 warning ("Could not find suitable cell for relative change test"), all from the `mai ssp126` test, which have nothing to check because a future scenario's output has no year 2000. Those skips are not a sign of missing inputs; missing inputs also make the `mai ssp126` test fail and print `does not exist` lines.
 
 ### When a PNG snapshot fails
 
-testthat writes the mismatched render to `tests/testthat-slow/_snaps/plot_diagnostics_regression/<name>.new.png` alongside the baseline. To review in R:
+testthat writes the mismatched render to `tests/testthat-slow/_snaps/plot_diagnostics_regression/<name>.new.png` alongside the baseline. To review in R, from the repo root:
 
-    > testthat::snapshot_review("plot_diagnostics_regression")
+    > testthat::snapshot_review("plot_diagnostics_regression/", "tests/testthat-slow")
 
 If the change is intentional, accept the new baseline:
 
@@ -145,7 +145,7 @@ Then commit the updated snapshot files alongside the code change that produced t
 
 ### Environment caveat
 
-Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and CRAN R packages current when the image was built — a rebuild can pick up newer versions). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
+Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and the R package versions pinned in `renv.lock`). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
 
 ## Coverage
 
@@ -153,15 +153,13 @@ Generate a line-coverage report for `fertilizer_scaling_functions.R`:
 
     Rscript tests/coverage.R
 
-This requires a one-time installation of the `covr` tool:
-
-    Rscript -e 'renv::install("covr")'
+This needs `covr`, which is locked in `renv.lock` and restored automatically with the other packages.
 
 The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes a few minutes.
 
-It prints a per-file summary to the console and, when the optional rendering deps are available, also writes a per-line HTML report to `coverage.html` (gitignored). Open it in a browser to see exactly which expressions went uncovered. The HTML deps aren't in `renv.lock` because of their transitive footprint; enable HTML output with:
+It prints a per-file summary to the console and, when the optional rendering deps are available, also writes a per-line HTML report to `coverage.html` (gitignored). Open it in a browser to see exactly which expressions went uncovered. The HTML deps (`DT`, `htmltools`) are locked in `renv.lock`, so `renv::restore()` installs them. If they are missing from your library the HTML step is skipped; install them with:
 
-    Rscript -e 'renv::install(c("DT", "htmltools"))'
+    Rscript -e 'renv::restore()'
 
 Pass an optional threshold percentage to fail the run when coverage drops below it (intended for CI):
 

@@ -133,11 +133,11 @@ test_that("relative method fires 4 inner test_that blocks and all pass on good f
   expect_equal(r$n_warnings, 0)
 })
 
-test_that("lambda method fires 2 inner test_that blocks and prints validation lines", {
+test_that("lambda method fires 1 inner test_that block and prints validation lines", {
   fx <- make_test_scaling_fixture()
   r <- run_test_scaling_capture(fx$scaled_data, fx$timeseries, fx$base_rate,
                                 fx$start_year, fx$base_year, method = "lambda")
-  expect_equal(r$n_tests, 2)
+  expect_equal(r$n_tests, 1)
   expect_equal(r$n_failures, 0)
   expect_true(any(grepl("=== Lambda Method Validation ===", r$output)))
   expect_true(any(grepl("Base year spatial correlation:", r$output)))
@@ -205,9 +205,9 @@ test_that("lambda: random data that breaks relative does NOT cause lambda to fai
                                 fx$start_year, fx$base_year, method = "lambda")
   # The same random fixture causes multiple inner failures under the relative
   # method (see test "relative: random data fails base-year, trends, and
-  # relative-changes"). Lambda treats all three as informational, so
+  # relative-changes"). Lambda only prints the base-year and trend correlations and skips the relative-changes check, so
   # n_failures must be 0 here. This contrast is what proves lambda's
-  # "informational only" semantics for its inner blocks.
+  # "informational only" semantics.
   expect_equal(r$n_failures, 0)
 })
 
@@ -257,7 +257,7 @@ test_that("test_scaling under lambda prints median correlation when n_sampled > 
                                 fx$start_year, fx$base_year, method = "lambda")
   expect_true(any(grepl("Median trend correlation \\(lambda method\\): 0\\.7777",
                         r$output)))
-  expect_false(block_failed(r, "Trends are preserved"))
+  expect_false(any(grepl("Trends are preserved", names(r$failures_by_block))))
 })
 
 test_that("test_scaling calls check_relative_changes_applied with all four args (relative)", {

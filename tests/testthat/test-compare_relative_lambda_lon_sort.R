@@ -1,7 +1,7 @@
 # tests/testthat/test-compare_relative_lambda_lon_sort.R
 #
 # Covers the lon-coords-not-monotonically-increasing sort path at
-# lines 980-984 in compare_relative_lambda().
+# the `any(diff(lon) <= 0)` block in compare_relative_lambda().
 
 test_that("compare_relative_lambda sorts when lon coords are decreasing", {
   tmp <- withr::local_tempdir()

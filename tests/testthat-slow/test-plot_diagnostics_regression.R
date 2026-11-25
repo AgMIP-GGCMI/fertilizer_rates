@@ -1,7 +1,8 @@
 # PNG regression tests for plot_diagnostics. Each test renders a
 # reference scenario through the harness and snapshots every produced
 # PNG. testthat compares byte-for-byte against committed baselines and
-# writes a .new.png next to any mismatch for review.
+# writes a .new.png next to any mismatch for review. The renders run with both
+# scaling methods enabled (see render_scenario()).
 
 # expect_snapshot_file() requires testthat edition 3. This project
 # is not an R package, so there's no DESCRIPTION to set
@@ -22,6 +23,10 @@ baseline_dir <- testthat::test_path("..", "testthat-slow", "baselines")
 render_scenario <- function(crop, scenario, iam = NULL, gcm = NULL) {
   tmp <- tempfile(paste0("diagnostics-", scenario, "-"))
   dir.create(tmp, recursive = TRUE)
+  # Production runs the lambda method only; the test enables both so the
+  # relative method and compare_relative_lambda() stay covered end to end.
+  # Restored when render_scenario() returns.
+  local_mocked_globals(scaling_methods = c("relative", "lambda"))
   withr::with_dir(
     testthat::test_path("..", ".."),
     render_diagnostics_to_png(tmp, crop, scenario, iam, gcm)
@@ -79,8 +84,10 @@ test_that("plot_diagnostics output is byte-identical for mai histsoc", {
 })
 
 test_that("plot_diagnostics + NetCDF outputs match baselines for mai ssp126 image gfdl-esm4", {
+  methods_before <- scaling_methods
   tmp <- render_scenario("mai", "ssp126", "image", "gfdl-esm4")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  expect_identical(scaling_methods, methods_before)
   snapshot_all_pngs(tmp)
   expect_ssp126_mai_baselines(tmp)
 })

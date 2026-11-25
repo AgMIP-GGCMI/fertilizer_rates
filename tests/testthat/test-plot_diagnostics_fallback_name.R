@@ -1,7 +1,7 @@
 # tests/testthat/test-plot_diagnostics_fallback_name.R
 #
 # Covers the fallback plot_file naming path in plot_diagnostics()
-# (lines 558-559) — fires when a non-histsoc scenario is passed
+# (the `else` branch of the iam/gcm check that builds the `_annual_1850_2100_diagnostics.pdf` name) — fires when a non-histsoc scenario is passed
 # without iam/gcm. This branch is not reachable from main(), which
 # always supplies both iam and gcm for future scenarios.
 

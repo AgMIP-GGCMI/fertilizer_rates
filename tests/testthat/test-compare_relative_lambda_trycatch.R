@@ -1,6 +1,6 @@
 # tests/testthat/test-compare_relative_lambda_trycatch.R
 #
-# Covers compare_relative_lambda's tryCatch error handler (lines 1353-1358)
+# Covers compare_relative_lambda's tryCatch error handler (the one that prints "ERROR IN compare_relative_lambda")
 # by feeding rel + lambda NetCDFs whose 12 cells have pairwise-distinct
 # (trend_rel, trend_lambda) signatures. The 40x40 bin histogram in
 # plot_density_heatmap then puts every point in its own bin, so
