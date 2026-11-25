@@ -106,20 +106,10 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # coordinates rather than synthesizing from scratch, so we inherit
   # whatever convention the input file uses (Mueller 5-min files are
   # north->south).
-  lon_halfdeg <- colMeans(matrix(lon_5min, nrow = agg_factor))
-  lat_halfdeg <- colMeans(matrix(lat_5min, nrow = agg_factor))
+  lon_halfdeg <- block_centres(lon_5min, agg_factor)
+  lat_halfdeg <- block_centres(lat_5min, agg_factor)
 
-  # Reshape into a 4-D layout where each 6x6 input block ends up
-  # contiguous along a single 36-element axis: dim 1 is the within-block
-  # lon offset, dim 3 is the within-block lat offset, dims 2 and 4 are
-  # the output lon/lat indices. aperm pulls the two within-block dims
-  # together; the dim() assignment then collapses them into one
-  # 36-element axis per output cell so colMeans computes all 259,200
-  # block means in a single C-level call.
-  arr <- array(data_5min, dim = c(agg_factor, nlon_out, agg_factor, nlat_out))
-  arr <- aperm(arr, c(1, 3, 2, 4))
-  dim(arr) <- c(agg_factor * agg_factor, nlon_out * nlat_out)
-  data_halfdeg <- matrix(colMeans(arr, na.rm = TRUE),
+  data_halfdeg <- matrix(colMeans(block_columns(data_5min, agg_factor), na.rm = TRUE),
                          nrow = nlon_out, ncol = nlat_out)
   # colMeans(., na.rm = TRUE) returns NaN for an all-NA column; rewrite
   # those to NA so missing data stays missing.
@@ -131,21 +121,13 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # convention the input file used. rev() only fixes the case where the
   # input is monotonically descending; a non-monotonic lat axis would
   # silently pass through, so verify strict ascending order after.
-  if (any(diff(lat_halfdeg) < 0)) {
-    lat_halfdeg <- rev(lat_halfdeg)
-    data_halfdeg <- data_halfdeg[, ncol(data_halfdeg):1]
-  }
-  if (any(diff(lat_halfdeg) <= 0)) {
-    stop("aggregate_to_halfdegree: lat_halfdeg is not strictly ascending ",
-         "after canonicalization (input lat is non-monotonic).")
-  }
+  res <- lat_to_ascending(data_halfdeg, lat_halfdeg, "aggregate_to_halfdegree")
+  data_halfdeg <- res$data
+  lat_halfdeg <- res$lat
   # lon_halfdeg is taken directly from the input with no canonicalization,
   # so a non-monotonic input lon would silently propagate. Production
   # 5-min files are monotonic; this catches a corrupted or hand-built input.
-  if (any(diff(lon_halfdeg) <= 0)) {
-    stop("aggregate_to_halfdegree: lon_halfdeg is not strictly ascending ",
-         "(input lon is non-monotonic).")
-  }
+  stop_unless_ascending(lon_halfdeg, "aggregate_to_halfdegree: lon_halfdeg")
 
   return(list(data = data_halfdeg, lon = lon_halfdeg, lat = lat_halfdeg))
 }
