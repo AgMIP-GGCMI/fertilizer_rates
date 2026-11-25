@@ -356,7 +356,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   valid_base      <- prep$valid_base
 
   # create output array [lon, lat, time]
-  scaled_data <- array(NA, dim = c(nlon, nlat, ntimes))
+  scaled_data <- array(NA_real_, dim = c(nlon, nlat, ntimes))
   
   if (method == "relative") {
     # Relative method keeps the historical behavior: only base_rate > 0 cells
@@ -406,35 +406,32 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
     for (t in 1:ntimes) {
       withCallingHandlers({
-        scaled_data[, , t] <- scale_lambda_timestep(
-          base_rate, timeseries[, , t], base_timeseries, valid_base_lambda, lambda
+        ts_t <- timeseries[, , t]
+        slice <- scale_lambda_timestep(
+          base_rate, ts_t, base_timeseries, valid_base_lambda, lambda
         )
 
         # Apply delayed-anchor fallback for TS(base_year) < threshold.
         if (any(delayed_anchor_ready)) {
-          ts_t <- timeseries[, , t]
           fallback_cells <- delayed_anchor_ready & is.finite(ts_t)
           if (any(fallback_cells)) {
-            slice <- scaled_data[, , t]
             slice[fallback_cells] <- base_rate[fallback_cells] *
               (ts_t[fallback_cells] / delayed_anchor_value[fallback_cells])
             slice[!is.na(slice) & slice < 0] <- 0
-            scaled_data[, , t] <- slice
           }
         }
 
         # If no anchor year (TS>=threshold) exists for a delayed-anchor cell,
         # fall back to raw TS(t) so values do not remain NA indefinitely.
         if (any(delayed_anchor_unresolved)) {
-          ts_t <- timeseries[, , t]
           unresolved_cells <- delayed_anchor_unresolved & is.finite(ts_t)
           if (any(unresolved_cells)) {
-            slice <- scaled_data[, , t]
             slice[unresolved_cells] <- ts_t[unresolved_cells]
             slice[!is.na(slice) & slice < 0] <- 0
-            scaled_data[, , t] <- slice
           }
         }
+
+        scaled_data[, , t] <- slice
       }, error = function(e) {
         # Prints the time step t, message and dims for an error from any part
         # of the per-year body, including the delayed-anchor fallbacks. The
