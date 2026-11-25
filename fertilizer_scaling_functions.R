@@ -116,7 +116,7 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   data_halfdeg[is.nan(data_halfdeg)] <- NA
 
   # Canonicalize to ascending lat with data aligned south->north along the
-  # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
+  # lat axis. This gives downstream code (write_fertilizer_netcdf, plot helpers,
   # fields::image.plot) an unambiguous contract regardless of which
   # convention the input file used. rev() only fixes the case where the
   # input is monotonically descending; a non-monotonic lat axis would
@@ -899,6 +899,61 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
 
 # ============================================================================
+# FUNCTION: write_fertilizer_netcdf
+# ============================================================================
+# Write a fertilizer array to a NetCDF file. Creates dirname(out_file) if
+# needed, defines fertl_<crop> on [lon, lat, time] and writes `data`, then
+# writes `global_atts` as global attributes in list order. The caller's `data`
+# is never modified.
+#
+# Args:
+#   data: Numeric array dimensioned [length(lon), length(lat), time]
+#   lon, lat: Coordinate vectors (degrees east / north)
+#   time_dim: An ncdf4::ncdim_def("time", ...) object, so each caller chooses
+#     its own time axis
+#   out_file: Output path
+#   crop: Crop name; the variable is named fertl_<crop>
+#   global_atts: Named list of global attributes
+#
+# Returns: out_file, invisibly.
+# ============================================================================
+write_fertilizer_netcdf <- function(data, lon, lat, time_dim, out_file, crop, global_atts) {
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+
+  dim_lon <- ncdim_def("lon", "degrees_east", lon)
+  dim_lat <- ncdim_def("lat", "degrees_north", lat)
+
+  # Chunk one full spatial field per timestep. With var dims ordered as
+  # [lon, lat, time], this appears as [1, 360, 720] in ncdump output.
+  chunk_sizes <- c(length(lon), length(lat), 1)
+
+  ncv <- ncvar_def(name = paste0("fertl_", crop),
+                  dim = list(dim_lon, dim_lat, time_dim),
+                  missval = 1.e+20,
+                  prec = "float",
+                  units = "kg ha-1 yr-1",
+                  longname = paste("N fertilizer application rate for", crop),
+                  # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
+                  compression = 6,
+                  chunksizes = chunk_sizes,
+                  verbose = FALSE)
+
+  nc_out <- nc_create(out_file, list(ncv), verbose = FALSE)
+  on.exit(nc_close(nc_out), add = TRUE)
+
+  # ncvar_put() overwrites the NA cells of the array it is given with the fill
+  # value, in place in R's memory. `data + 0` forces a real copy (a plain
+  # assignment would share memory), so the caller's array keeps its NAs.
+  ncvar_put(nc_out, varid = ncv, data + 0, start = c(1, 1, 1), count = c(-1, -1, -1))
+
+  for (att_name in names(global_atts)) {
+    ncatt_put(nc_out, 0, att_name, global_atts[[att_name]])
+  }
+
+  invisible(out_file)
+}
+
+# ============================================================================
 # FUNCTION: main
 # ============================================================================
 # Main processing workflow: load spatial patterns, load timeseries, scale,
@@ -1071,7 +1126,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     print("Running validation tests...")
     test_scaling(scaled_data, ts_data, base_rate, start_year_ts, base_year, method = method)
     
-    # Create diagnostic plots BEFORE writing NetCDF (ncvar_put modifies the array in place!)
+    # The plots can come before or after the NetCDF writes: write_fertilizer_netcdf() doesn't modify scaled_data
     print("Creating diagnostic plots...")
     plot_diagnostics(base_rate, scaled_data, ts_data, lon_halfdeg, lat_halfdeg,
             start_year_ts, end_year_ts, crop, scenario, output_dir, method = method,
@@ -1082,48 +1137,17 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     # Write output file(s)
     write_netcdf_file <- function(data_slice, yr_start, yr_end, out_file) {
       print(paste("Writing output to", out_file))
-      
-      # create output directory
-      out_dir <- dirname(out_file)
-      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-      
-      # define dimensions
-      dim_lon <- ncdim_def("lon", "degrees_east", lon_halfdeg)
-      dim_lat <- ncdim_def("lat", "degrees_north", lat_halfdeg)
+
       dim_time <- ncdim_def("time", paste("years since", yr_start - 1, "-1-1 00:00:00"),
                            (yr_start:yr_end) - (yr_start - 1))
 
-      # Chunk one full spatial field per timestep. With var dims ordered as
-      # [lon, lat, time], this appears as [1, 360, 720] in ncdump output.
-      chunk_sizes <- c(length(lon_halfdeg), length(lat_halfdeg), 1)
-      
-      # define variable
-      ncv <- ncvar_def(name = paste0("fertl_", crop),
-                      dim = list(dim_lon, dim_lat, dim_time),
-                      missval = 1.e+20,
-                      prec = "float",
-                      units = "kg ha-1 yr-1",
-                      longname = paste("N fertilizer application rate for", crop),
-                      # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
-                      compression = 6,
-                      chunksizes = chunk_sizes,
-                      verbose = FALSE)
-      
-      # create file
-      nc_out <- nc_create(out_file, list(ncv), verbose = FALSE)
-      
-      # write data
-      ncvar_put(nc_out, varid = ncv, data_slice, start = c(1, 1, 1), count = c(-1, -1, -1))
-      
-      # add global attributes
-      ncatt_put(nc_out, 0, "source", "Scaled from Mueller et al. fertilizer data and ISIMIP3b time series")
-      ncatt_put(nc_out, 0, "contact", "info@pik-potsdam.de")
-      ncatt_put(nc_out, 0, "institution", "Potsdam Institute for Climate Impact Research")
-      ncatt_put(nc_out, 0, "base_year", base_year)
-      ncatt_put(nc_out, 0, "scaling_method", method)
-      ncatt_put(nc_out, 0, "creation_date", as.character(Sys.Date()))
-      
-      nc_close(nc_out)
+      write_fertilizer_netcdf(data_slice, lon_halfdeg, lat_halfdeg, dim_time, out_file, crop,
+        list(source = "Scaled from Mueller et al. fertilizer data and ISIMIP3b time series",
+             contact = "info@pik-potsdam.de",
+             institution = "Potsdam Institute for Climate Impact Research",
+             base_year = base_year,
+             scaling_method = method,
+             creation_date = as.character(Sys.Date())))
     }
     
     # Write file(s) depending on scenario
