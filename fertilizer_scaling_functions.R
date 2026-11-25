@@ -8,6 +8,55 @@
 source("fertilizer_scaling_plot_diagnostics_functions.R")
 
 # ============================================================================
+# Grid helpers shared by aggregate_to_halfdegree(),
+# aggregate_weighted_to_halfdegree() (ISIMIP4) and read_timeseries_nc()
+# ============================================================================
+
+# Rearrange an [nx, ny] matrix into one column per factor x factor block.
+# Returns a [factor^2, (nx/factor) * (ny/factor)] matrix whose column k holds
+# the k-th block, blocks in column-major order of the coarse grid. Callers
+# reduce the columns (colMeans, colSums) and reshape to [nx/factor, ny/factor].
+block_columns <- function(x, factor) {
+  nx <- dim(x)[1] %/% factor
+  ny <- dim(x)[2] %/% factor
+  # dim 1 is the within-block lon offset, dim 3 the within-block lat offset;
+  # aperm brings them together and the dim() assignment collapses them into
+  # one factor^2 axis per coarse cell.
+  arr <- array(x, dim = c(factor, nx, factor, ny))
+  arr <- aperm(arr, c(1, 3, 2, 4))
+  dim(arr) <- c(factor * factor, nx * ny)
+  arr
+}
+
+# Coordinates of coarse-cell centres: the mean of each run of `factor`
+# consecutive fine-grid coordinates.
+block_centres <- function(coords, factor) {
+  colMeans(matrix(coords, nrow = factor))
+}
+
+# Return list(data, lat) with lat strictly ascending. A descending lat is
+# reversed and x (2-D or 3-D, lat on dimension 2) is flipped to match. Stops
+# if lat is still not strictly ascending (i.e. it was non-monotonic).
+lat_to_ascending <- function(x, lat, label) {
+  if (any(diff(lat) < 0)) {
+    lat <- rev(lat)
+    ny <- dim(x)[2]
+    x <- if (length(dim(x)) == 3) x[, ny:1, , drop = FALSE] else x[, ny:1, drop = FALSE]
+  }
+  if (any(diff(lat) <= 0)) {
+    stop(label, ": lat is not strictly ascending after canonicalization ",
+         "(input lat is non-monotonic).")
+  }
+  list(data = x, lat = lat)
+}
+
+# Stop unless coords is strictly ascending; returns coords invisibly.
+stop_unless_ascending <- function(coords, label) {
+  if (any(diff(coords) <= 0)) stop(label, " is not strictly ascending")
+  invisible(coords)
+}
+
+# ============================================================================
 # FUNCTION: aggregate_to_halfdegree
 # ============================================================================
 # Aggregate spatial data from 5 arcmin to 0.5 degree resolution
