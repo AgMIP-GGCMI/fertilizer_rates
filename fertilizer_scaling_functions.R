@@ -942,13 +942,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   lon_5min <- ncvar_get(nc_spatial, varid = "longitude")
   lat_5min <- ncvar_get(nc_spatial, varid = "latitude")
   
-  # get fill value from NetCDF metadata
-  missval_spatial <- ncatt_get(nc_spatial, varid = paste0(input_crop, "Napprate"), attname = "_FillValue")
-  if (missval_spatial$hasatt) {
-    spatial_data[spatial_data == missval_spatial$value] <- NA
-  }
-  # also catch any extreme values that might be fill values
-  spatial_data[abs(spatial_data) >= 1e+19] <- NA
+  spatial_data <- mask_fill_values(spatial_data, nc_spatial, paste0(input_crop, "Napprate"))
   
   # handle 2D or 3D data (if only 1 time step, drop the time dimension)
   if (length(dim(spatial_data)) == 3) {
@@ -1010,16 +1004,6 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   var_names <- names(nc_ts$var)
   print(paste("Available variables in time series file:", paste(var_names, collapse = ", ")))
   
-  # Check coordinate dimensions
-  ts_lon <- NULL
-  ts_lat <- NULL
-  if ("lon" %in% names(nc_ts$dim)) {
-    ts_lon <- ncvar_get(nc_ts, varid = "lon")
-  }
-  if ("lat" %in% names(nc_ts$dim)) {
-    ts_lat <- ncvar_get(nc_ts, varid = "lat")
-  }
-  
   # get functional group for this crop
   funcgroup <- crop_to_funcgroup[[crop]]
   print(paste("Looking for variable:", funcgroup))
@@ -1047,25 +1031,12 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     }
   }
   
-  # load time series data [lon, lat, time]
-  ts_data <- ncvar_get(nc_ts, varid = funcgroup)
-  print(paste("Future TS dims:", paste(dim(ts_data), collapse = "x")))
-  # Canonicalize lat axis to ascending to match aggregate_to_halfdegree's
-  # output convention. ISIMIP3b TS files store lat north->south.
-  if (!is.null(ts_lat) && any(diff(ts_lat) < 0)) {
-    ts_data <- ts_data[, dim(ts_data)[2]:1, ]
-  }
-  time_vals <- ncvar_get(nc_ts, varid = "time")
-  
-  # get fill value from NetCDF metadata
-  missval_ts <- ncatt_get(nc_ts, varid = funcgroup, attname = "_FillValue")
-  if (missval_ts$hasatt) {
-    ts_data[ts_data == missval_ts$value] <- NA
-  }
-  # also catch any extreme values that might be fill values
-  ts_data[abs(ts_data) >= 1e+19] <- NA
-  
   nc_close(nc_ts)
+  
+  # load time series data [lon, lat, time]: fill values masked, lat ascending
+  # to match aggregate_to_halfdegree's output convention
+  ts_data <- read_timeseries_nc(ts_file, funcgroup)$data
+  print(paste("Future TS dims:", paste(dim(ts_data), collapse = "x")))
   
   # Combine historical and future data if needed
   if (scenario != "histsoc") {
