@@ -695,7 +695,12 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                             spatial_data_5min = NULL, lon_5min = NULL, lat_5min = NULL,
                             iam = NULL, gcm = NULL,
                             base_timeseries_override = NULL) {
-  
+  # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
+  # useRaster argument: with the option, image() falls back to polygons on non-regular grids
+  # instead of erroring.
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
+
   # Define output PDF file and open device
   # Construct explicit, scenario/method-specific filename aligned with NetCDF naming
   if (tolower(scenario) == "histsoc") {
@@ -1091,6 +1096,8 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
 #   output_dir: Directory to save comparison plots
 # ============================================================================
 compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, output_dir) {
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
   
   print(paste("====== DIAGNOSTIC: Starting compare_relative_lambda for", crop, scenario, "======"))
   
