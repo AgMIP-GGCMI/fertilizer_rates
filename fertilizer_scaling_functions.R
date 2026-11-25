@@ -234,6 +234,48 @@ read_timeseries_nc <- function(ts_file, var_name, time_start = 1, time_count = -
   list(data = res$data, lon = lon, lat = res$lat)
 }
 
+# ============================================================================
+# FUNCTION: read_timeseries_files
+# ============================================================================
+# Read var_name from one or more time-series files and concatenate
+# along time. years_list gives each file's years (the file's own time axis
+# is not decoded). Each file is read with read_timeseries_nc(), so fill
+# values are NA and lat is ascending. Used for ISIMIP4 inputs and for reading
+# written outputs back for the relative-vs-lambda comparison (both rounds).
+# ============================================================================
+read_timeseries_files <- function(files, years_list, var_name) {
+  if (!is.list(years_list)) {
+    stop("read_timeseries_files: years_list must be a list with one vector of years per file")
+  }
+  if (length(files) == 0) stop("read_timeseries_files: no files given")
+  if (length(files) != length(years_list)) {
+    stop("read_timeseries_files: files and years_list differ in length")
+  }
+  pieces <- vector("list", length(files))
+  lon <- NULL
+  lat <- NULL
+  for (k in seq_along(files)) {
+    f <- files[[k]]
+    ts <- read_timeseries_nc(f, var_name)
+    if (dim(ts$data)[3] != length(years_list[[k]])) {
+      stop(f, " has ", dim(ts$data)[3], " time steps but ",
+           length(years_list[[k]]), " years were expected")
+    }
+    if (is.null(lon)) {
+      lon <- ts$lon
+      lat <- ts$lat
+    } else if (!isTRUE(all.equal(lon, ts$lon)) || !isTRUE(all.equal(lat, ts$lat))) {
+      stop("read_timeseries_files: grids differ between files")
+    }
+    pieces[[k]] <- ts$data
+  }
+  years <- unlist(years_list)
+  if (anyNA(years)) stop("read_timeseries_files: years contain NA")
+  if (any(diff(years) != 1)) stop("read_timeseries_files: years are not contiguous")
+  list(data = abind::abind(pieces, along = 3), lon = lon, lat = lat,
+       years = as.integer(years))
+}
+
 # ==========================================================================
 # FUNCTION: read_timeseries_year_slice
 # ==========================================================================
