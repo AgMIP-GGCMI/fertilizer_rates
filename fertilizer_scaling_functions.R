@@ -431,6 +431,11 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
           }
         }
 
+        # Apply a hard cap for lambda outputs to avoid implausibly high rates.
+        # It comes after both fallbacks so their values are capped too; NA
+        # cells stay NA.
+        slice[!is.na(slice) & slice > lambda_max_rate] <- lambda_max_rate
+
         scaled_data[, , t] <- slice
       }, error = function(e) {
         # Prints the time step t, message and dims for an error from any part
@@ -444,12 +449,6 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
       })
     }
 
-    # Apply a hard cap for lambda outputs to avoid implausibly high rates.
-    scaled_data[!is.na(scaled_data)] <- pmin(
-      scaled_data[!is.na(scaled_data)],
-      lambda_max_rate
-    )
-    
   } else {
     stop(paste("Unknown scaling method:", method))
   }
