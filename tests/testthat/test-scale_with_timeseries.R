@@ -461,11 +461,11 @@ test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data 
   local_mocked_globals(
     diagnose_extreme_values = function(scaled_data, base_rate,
                                        base_timeseries, timeseries,
-                                       start_year) {
+                                       start_year, base_year) {
       captured <<- list(
         scaled_data = scaled_data, base_rate = base_rate,
         base_timeseries = base_timeseries, timeseries = timeseries,
-        start_year = start_year
+        start_year = start_year, base_year = base_year
       )
       invisible(NULL)
     }
@@ -480,6 +480,7 @@ test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data 
   expect_equal(captured$base_timeseries, fx$timeseries[, , 2])
   expect_equal(captured$timeseries, fx$timeseries)
   expect_equal(captured$start_year, fx$start_year)
+  expect_equal(captured$base_year, fx$base_year)
   # The diagnostic is called AFTER scaling is complete, so captured$scaled_data
   # should be the final result.
   expect_equal(captured$scaled_data, result)

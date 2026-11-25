@@ -182,16 +182,17 @@ plot_aggregation_comparison <- function(base_rate, spatial_data_5min, lon, lat,
 # ----------------------------------------------------------------------------
 # plot_pattern_maps
 # ----------------------------------------------------------------------------
-# Renders the five map panels: original pattern (year 2000), scaled first /
+# Renders the five map panels: original pattern (reference year), scaled first /
 # middle / last, and the last-first difference map (diverging palette).
+# ref_year is the reference year named in the original-pattern panel title.
 # ----------------------------------------------------------------------------
 plot_pattern_maps <- function(base_rate, scaled_data, lon, lat, sample_locations,
-                              start_year, end_year, mid_idx, crop, method) {
+                              start_year, end_year, mid_idx, crop, method, ref_year) {
   ntime <- dim(scaled_data)[3]
   mid_year <- start_year + mid_idx - 1
 
   plot_map(lon, lat, base_rate,
-           paste(crop, "- Original Pattern (Year 2000) [Method:", method, "]"),
+           paste(crop, paste0("- Original Pattern (Year ", ref_year, ") [Method:"), method, "]"),
            sample_locations = sample_locations)
 
   plot_map(lon, lat, scaled_data[, , 1],
@@ -231,7 +232,7 @@ plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, 
       x <- base_rate[valid]
       y <- scaled_base[valid]
       plot(x, y, pch = 16, cex = 0.4,
-           xlab = "Original (Year 2000)", ylab = "Scaled (Year 2000)",
+           xlab = paste0("Original (Year ", base_year, ")"), ylab = paste0("Scaled (Year ", base_year, ")"),
            main = paste(crop, "- Scatter Year", base_year))
       abline(0, 1, col = "red", lwd = 2)
       if (length(x) > 1 && sd(x) > 0 && sd(y) > 0) {
@@ -257,7 +258,7 @@ plot_base_year_scatter <- function(base_rate, scaled_data, base_idx, base_year, 
       x <- base_rate[valid]
       y <- scaled_base[valid]
       plot(x, y, pch = 16, cex = 0.4,
-           xlab = "Original (Year 2000)", ylab = "Scaled (Year 2000)",
+           xlab = paste0("Original (Year ", base_year, ")"), ylab = paste0("Scaled (Year ", base_year, ")"),
            main = paste(crop, "- Scatter Year", base_year))
       abline(0, 1, col = "red", lwd = 2)
       if (length(x) > 1 && sd(x) > 0 && sd(y) > 0) {
@@ -342,6 +343,7 @@ plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year
 # Renders a ratio map of spatial-base vs timeseries-base at the base year,
 # with ratios capped to [0.2, 5] for visualization. Prints a console
 # diagnostic line reporting cells that differ by more than 50%.
+# ref_year only feeds the map title.
 #
 # The sample_locations arg matches the signature convention used by other
 # map-producing section functions (parity with plot_pattern_maps, etc.).
@@ -350,7 +352,7 @@ plot_relative_change_hist <- function(scaled_data, base_idx, base_year, end_year
 # byte-for-byte means not adding any.
 # ----------------------------------------------------------------------------
 plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
-                                  sample_locations, crop,
+                                  sample_locations, crop, ref_year,
                                   base_timeseries_override = NULL) {
   ntime <- dim(timeseries)[3]
   if (!is.null(base_timeseries_override)) {
@@ -376,7 +378,7 @@ plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
                                         "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
 
         image.plot(lon, lat, data_plot,
-                   main = paste(crop, "- Spatial/TS Ratio (Year 2000)"),
+                   main = paste(crop, paste0("- Spatial/TS Ratio (Year ", ref_year, ")")),
                    xlab = "Longitude", ylab = "Latitude",
                    col = col_ramp,
                    zlim = zlim,
@@ -417,7 +419,7 @@ plot_spatial_ts_ratio <- function(base_rate, timeseries, base_idx, lon, lat,
                                         "#fddbc7", "#f4a582", "#d6604d", "#b2182b"))(100)
 
         image.plot(lon, lat, data_plot,
-                   main = paste(crop, "- Spatial/TS Ratio (Year 2000)"),
+                   main = paste(crop, paste0("- Spatial/TS Ratio (Year ", ref_year, ")")),
                    xlab = "Longitude", ylab = "Latitude",
                    col = col_ramp,
                    zlim = zlim,
@@ -735,7 +737,7 @@ plot_outlier_scatter <- function(base_rate, scaled_data, timeseries,
              paste("n =", format(length(sf_outliers), big.mark = ",")),
              paste("Correlation:", sprintf("%.3f", cor_outliers)),
              "",
-             "Base rate (2000) quartiles:",
+             paste0("Base rate (", base_year, ") quartiles:"),
              paste("Q1:", sprintf("%.0f", base_quartiles[1])),
              paste("Q2:", sprintf("%.0f", base_quartiles[2])),
              paste("Q3:", sprintf("%.0f", base_quartiles[3]))

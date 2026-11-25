@@ -50,3 +50,17 @@ test_that("plot_relative_lambda_comparison completes when ref_year is outside th
   expect_true(file.exists(f))
   expect_false(any(grepl("ERROR IN", out)))
 })
+
+test_that("plot_relative_lambda_comparison labels the base-year panels with ref_year", {
+  tmp <- withr::local_tempdir()
+  lon <- seq(-179.75, by = 0.5, length.out = 6)
+  lat <- seq(-40, by = 10, length.out = 5)
+  rel <- make_rel()
+  out <- capture.output(
+    plot_relative_lambda_comparison(rel, rel * 1.1, lon, lat, 2019, 2021, "mai",
+                                    plot_file = file.path(tmp, "cmp.pdf"), ref_year = 2020)
+  )
+  expect_true(any(grepl("Plotting Year 2020 maps", out)))
+  expect_true(any(grepl("Year 2020 equality count", out)))
+  expect_false(any(grepl("Year 2000", out)))
+})

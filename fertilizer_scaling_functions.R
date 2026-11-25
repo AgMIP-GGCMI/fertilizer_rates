@@ -276,9 +276,10 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
 # ============================================================================
 # Print a warning and details for cells whose scaled value exceeds
 # 1000 kg/ha. Never alters scaled_data. Returns invisibly.
+# base_year is the reference year named in the printed cell details.
 # ============================================================================
 diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
-                                    timeseries, start_year) {
+                                    timeseries, start_year, base_year) {
   max_val <- max(scaled_data, na.rm = TRUE)
   if (max_val > 1000) {
     print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
@@ -298,9 +299,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
         max_year_idx <- which.max(ts_cell)
         max_year <- start_year + max_year_idx - 1
         print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
-        print(paste("  Base rate (year 2000 spatial):",
+        print(paste(paste0("  Base rate (year ", base_year, " spatial):"),
                     round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at base year (2000):",
+        print(paste(paste0("  TS at base year (", base_year, "):"),
                     round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
         print(paste("  TS at year", max_year, ":",
                     round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
@@ -402,7 +403,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
       # otherwise the loaded series) for the first anchor year with
       # TS >= threshold. For future scenarios base_idx is already NA so this
       # makes no difference there; for histsoc it is essential because the
-      # base year (2000) may itself be zero while earlier years are positive.
+      # base year may itself be zero while earlier years are positive.
       for (i in 1:nlon) {
         for (j in 1:nlat) {
           if (delayed_anchor_cells[i, j]) {
@@ -472,7 +473,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   }
   
   diagnose_extreme_values(scaled_data, base_rate, base_timeseries,
-                          timeseries, start_year)
+                          timeseries, start_year, base_year)
 
   return(scaled_data)
 }
@@ -721,7 +722,7 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 #             base_year)
 #
 # Creates:
-#   1. Original pattern (year 2000)
+#   1. Original pattern (reference year)
 #   2. First year pattern
 #   3. Middle year pattern
 #   4. Last year pattern
@@ -780,7 +781,8 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   }
   
   plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
-                    start_year, end_year, mid_idx, crop, method)
+                    start_year, end_year, mid_idx, crop, method,
+                    ref_year)
 
   plot_base_year_scatter(base_rate, scaled_data, base_idx, ref_year, crop,
                          scaled_base_override = scaled_base_override)
@@ -788,7 +790,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, ref_year, end_year, crop,
                                                scaled_base_override = scaled_base_override)
 
-  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop,
+  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop, ref_year,
                         base_timeseries_override = base_timeseries_override)
 
   plot_sample_timeseries(base_rate, scaled_data, timeseries, lon, lat,
@@ -842,7 +844,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 #
 # Details:
 #   - For histsoc: scales and writes 1850–2014
-#   - For future: reads only the base_year (2000) slice of the historical time series
+#   - For future: reads only the base_year slice of the historical time series
 #     (the scaling baseline) plus the 2015–2100 future series; scales and
 #     writes 2015–2100
 #   - Applies each method in scaling_methods (production: lambda only)
@@ -913,7 +915,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     ts_file_future <- paste0(base_path_timeseries, "/", scenario, "soc-adapt/n-fertilizer-5crops_",
                            iam, "_", gcm, "_", scenario, "_annual_2015_2100.nc")
 
-    # Load the historical base-year slice only (year 2000), not the full
+    # Load the historical base-year slice only, not the full
     # 1850-2014 series. This avoids computing/scaling historical years in
     # future scenario tasks.
     funcgroup <- crop_to_funcgroup[[crop]]
@@ -1392,23 +1394,23 @@ plot_relative_lambda_comparison <- function(rel_data, lambda_data, lon, lat,
   mid_idx <- last_idx %/% 2
 
   
-  # ===== YEAR 2000 (if in range) =====
+  # ===== REFERENCE YEAR (if in range) =====
   if (base_idx >= 1 && base_idx <= last_idx) {
-    print("DIAGNOSTIC: Plotting Year 2000 maps")
+    print(paste("DIAGNOSTIC: Plotting Year", ref_year, "maps"))
     plot_map_comp(lon, lat, rel_data[, , base_idx], 
-            paste(crop, "- Year 2000 (Relative)"), diverging = FALSE)
+            paste(crop, paste0("- Year ", ref_year, " (Relative)")), diverging = FALSE)
     plot_map_comp(lon, lat, lambda_data[, , base_idx], 
-            paste(crop, "- Year 2000 (Lambda)"), diverging = FALSE)
-    diff_2000 <- lambda_data[, , base_idx] - rel_data[, , base_idx]
-    plot_map_comp(lon, lat, diff_2000, 
-            paste(crop, "- Year 2000 (Lambda - Relative)"), diverging = TRUE, log_scale = TRUE)
+            paste(crop, paste0("- Year ", ref_year, " (Lambda)")), diverging = FALSE)
+    diff_ref <- lambda_data[, , base_idx] - rel_data[, , base_idx]
+    plot_map_comp(lon, lat, diff_ref, 
+            paste(crop, paste0("- Year ", ref_year, " (Lambda - Relative)")), diverging = TRUE, log_scale = TRUE)
 
       # Ratio diagnostics (expect near equality in base year)
       rel_base <- rel_data[, , base_idx]
       lambda_base <- lambda_data[, , base_idx]
       valid_b <- is.finite(rel_base) & is.finite(lambda_base) & rel_base > 0
       n_equalish <- sum(abs(lambda_base[valid_b] - rel_base[valid_b]) < 1e-6)
-      cat(sprintf("DIAGNOSTIC: Year 2000 equality count (|Δ|<1e-6): %d / %d\n", n_equalish, sum(valid_b)))
+      cat(sprintf("DIAGNOSTIC: Year %d equality count (|Δ|<1e-6): %d / %d\n", as.integer(ref_year), n_equalish, sum(valid_b)))
   }
   
   # ===== FIRST YEAR =====
@@ -1570,9 +1572,9 @@ plot_relative_lambda_comparison <- function(rel_data, lambda_data, lon, lat,
     if (sum(valid_base) > 10) {
       x_base <- rel_base_flat[valid_base]
       y_base <- lambda_base_flat[valid_base]
-      plot_density_heatmap(x_base, y_base, main_title = "Density: Rates Year 2000")
+      plot_density_heatmap(x_base, y_base, main_title = paste("Density: Rates Year", ref_year))
     } else {
-      plot.new(); text(0.5, 0.5, "Insufficient 2000 data")
+      plot.new(); text(0.5, 0.5, paste("Insufficient", ref_year, "data"))
     }
   } else {
     # Middle year for future scenario
