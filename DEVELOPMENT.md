@@ -167,7 +167,7 @@ Generate a line-coverage report for `fertilizer_scaling_functions.R`:
 
 This needs `covr`, which is locked in `renv.lock` and restored automatically with the other packages.
 
-The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes a few minutes.
+The script instruments the source file with `covr` and runs both the fast and slow test suites against it. The slow PNG-regression tests are required to cover `main()`, `plot_diagnostics()`, and `compare_relative_lambda()` — they are exercised end-to-end rather than unit-tested — so the run takes about 30 seconds.
 
 It prints a per-file summary to the console and, when the optional rendering deps are available, also writes a per-line HTML report to `coverage.html` (gitignored). Open it in a browser to see exactly which expressions went uncovered. The HTML deps (`DT`, `htmltools`) are locked in `renv.lock`, so `renv::restore()` installs them. If they are missing from your library the HTML step is skipped; install them with:
 
