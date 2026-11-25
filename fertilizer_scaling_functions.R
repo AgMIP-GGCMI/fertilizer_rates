@@ -176,6 +176,65 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
 }
 
 # ==========================================================================
+# FUNCTION: mask_fill_values
+# ==========================================================================
+# Return x with NA wherever it equals the variable's _FillValue attribute (if
+# it has one) or has magnitude >= 1e19 (catches fill values written without
+# the attribute). `nc` is an open ncdf4 handle containing `var_name`.
+# ==========================================================================
+mask_fill_values <- function(x, nc, var_name) {
+  missval <- ncatt_get(nc, varid = var_name, attname = "_FillValue")
+  if (missval$hasatt) {
+    x[x == missval$value] <- NA
+  }
+  x[abs(x) >= 1e+19] <- NA
+  x
+}
+
+# ==========================================================================
+# FUNCTION: read_timeseries_nc
+# ==========================================================================
+# Read `time_count` steps (-1 = all remaining) of a [lon, lat, time] variable
+# starting at step `time_start`. Returns list(data, lon, lat): data is always
+# 3-D [lon, lat, t] (a single step keeps its time dimension), has fill values
+# masked to NA, and is ordered to match lat, which is strictly ascending.
+# Stops if the file or variable is missing or the steps are out of range.
+# ==========================================================================
+read_timeseries_nc <- function(ts_file, var_name, time_start = 1, time_count = -1) {
+  if (!file.exists(ts_file)) {
+    stop(paste("Time series file does not exist:", ts_file))
+  }
+
+  nc <- nc_open(ts_file)
+  on.exit(nc_close(nc), add = TRUE)
+
+  if (!(var_name %in% names(nc$var))) {
+    stop(paste0("Variable ", var_name, " not found in time series file: ", ts_file))
+  }
+
+  n_steps <- nc$var[[var_name]]$varsize[3]
+  if (time_count == 0 || time_count < -1) {
+    stop(paste0("time_count must be -1 (all remaining steps) or positive, not ",
+                time_count))
+  }
+  last_step <- if (time_count < 0) n_steps else time_start + time_count - 1
+  if (time_start < 1 || time_start > n_steps || last_step > n_steps) {
+    stop(paste0("Time steps ", time_start, "-", last_step, " are outside the ",
+                n_steps, " time steps in ", ts_file))
+  }
+
+  data <- ncvar_get(nc, varid = var_name,
+                    start = c(1, 1, time_start), count = c(-1, -1, time_count),
+                    collapse_degen = FALSE)
+  lon <- as.vector(ncvar_get(nc, varid = "lon"))
+  lat <- as.vector(ncvar_get(nc, varid = "lat"))
+
+  data <- mask_fill_values(data, nc, var_name)
+  res <- lat_to_ascending(data, lat, "read_timeseries_nc")
+  list(data = res$data, lon = lon, lat = res$lat)
+}
+
+# ==========================================================================
 # FUNCTION: read_timeseries_year_slice
 # ==========================================================================
 # Read a single [lon, lat] year slice from a time-series NetCDF without

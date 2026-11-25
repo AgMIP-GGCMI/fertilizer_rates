@@ -35,7 +35,7 @@ make_5min_spatial_nc <- function(path, input_crop, lon, lat,
 }
 
 make_ts_nc <- function(path, var_name, lon, lat, nyears,
-                       start_year, data = NULL) {
+                       start_year, data = NULL, missval = 1e20) {
   nlon <- length(lon); nlat <- length(lat)
   dim_lon <- ncdf4::ncdim_def("lon", "degrees_east", lon)
   dim_lat <- ncdf4::ncdim_def("lat", "degrees_north", lat)
@@ -47,7 +47,7 @@ make_ts_nc <- function(path, var_name, lon, lat, nyears,
   if (is.null(data)) data <- array(50, dim = c(nlon, nlat, nyears))
   ncv <- ncdf4::ncvar_def(var_name, "kg ha-1 yr-1",
                           dim = list(dim_lon, dim_lat, dim_time),
-                          missval = 1e20, prec = "float")
+                          missval = missval, prec = "float")
   nc <- ncdf4::nc_create(path, list(ncv))
   ncdf4::ncvar_put(nc, ncv, data)
   ncdf4::nc_close(nc)
