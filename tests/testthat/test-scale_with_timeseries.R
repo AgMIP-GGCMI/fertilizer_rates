@@ -326,6 +326,102 @@ test_that("lambda delayed-anchor unresolved cells fall back to raw TS(t)", {
   expect_true(all(is.finite(result[1, 1, ])))
 })
 
+test_that("delayed-anchor search accepts TS exactly equal to the threshold", {
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 4))
+
+  # Cell [1,1]: TS(base_year) = 0 (< 1). The first year with TS == 1 is the
+  # anchor, so the later value 4 is not used.
+  ts[1, 1, ] <- c(0.5, 0, 1, 4)
+  ts[2, 1, ] <- c(2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 1999,
+      start_year = 1998,
+      end_year = 2001,
+      method = "lambda"
+    )
+  )
+
+  expect_equal(as.numeric(result[1, 1, ]), c(50, 0, 100, 400))
+})
+
+test_that("delayed-anchor search skips NA and Inf years", {
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 5))
+
+  # Cell [1,1]: the NA and Inf years precede the first finite TS >= 1, which
+  # is t=4 (value 2). TS(base_year = t3) = 0 (< 1).
+  ts[1, 1, ] <- c(NA, Inf, 0, 2, 4)
+  ts[2, 1, ] <- c(2, 2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 2000,
+      start_year = 1998,
+      end_year = 2002,
+      method = "lambda"
+    )
+  )
+
+  expect_equal(as.numeric(result[1, 1, 3:5]), c(0, 100, 200))
+  expect_equal(as.numeric(result[1, 1, 1:2]), c(NA_real_, NA_real_))
+})
+
+test_that("lambda cap leaves NA cells NA and caps only values above 500", {
+  fx <- make_harness_fixture()
+  local_mocked_globals(
+    scale_lambda_timestep = function(base_rate, ts_t, base_timeseries,
+                                     valid_base, lambda) {
+      matrix(c(NA, 600, 500, 499.5), nrow = 2)
+    }
+  )
+  capture.output(
+    result <- scale_with_timeseries(fx$base_rate, fx$timeseries,
+                                    fx$base_year, fx$start_year, fx$end_year,
+                                    method = "lambda")
+  )
+  for (t in 1:3) {
+    expect_equal(result[, , t], matrix(c(NA, 500, 500, 499.5), nrow = 2))
+  }
+})
+
+test_that("lambda cap applies to delayed-anchor fallback values", {
+  base_rate <- matrix(c(100, 20, 30, 40), nrow = 2)
+  ts <- array(NA_real_, dim = c(2, 2, 4))
+
+  # Cell [1,1]: TS(base_year) = 0 (< 1), anchor at t=3 (value 1). The
+  # fallback 100 * 8/1 = 800 in the last year is capped to 500. An unresolved
+  # delayed-anchor cell is not covered: its raw TS is < 1, so it cannot
+  # exceed the cap.
+  ts[1, 1, ] <- c(0, 0, 1, 8)
+  ts[2, 1, ] <- c(2, 2, 2, 2)
+  ts[1, 2, ] <- c(3, 3, 3, 3)
+  ts[2, 2, ] <- c(4, 4, 4, 4)
+
+  capture.output(
+    result <- scale_with_timeseries(
+      base_rate = base_rate,
+      timeseries = ts,
+      base_year = 1999,
+      start_year = 1998,
+      end_year = 2001,
+      method = "lambda"
+    )
+  )
+
+  expect_equal(as.numeric(result[1, 1, ]), c(0, 0, 100, 500))
+})
+
 test_that("lambda loop reports the time step for any error and lets it propagate", {
   fx <- make_harness_fixture()
   calls <- 0
