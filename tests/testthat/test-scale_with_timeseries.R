@@ -326,7 +326,7 @@ test_that("lambda delayed-anchor unresolved cells fall back to raw TS(t)", {
   expect_true(all(is.finite(result[1, 1, ])))
 })
 
-test_that("lambda loop reports the time step for any error and re-throws it", {
+test_that("lambda loop reports the time step for any error and lets it propagate", {
   fx <- make_harness_fixture()
   calls <- 0
   local_mocked_globals(

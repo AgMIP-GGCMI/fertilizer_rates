@@ -405,7 +405,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     lambda <- compute_lambda(base_rate, base_timeseries, valid_base_lambda)
 
     for (t in 1:ntimes) {
-      tryCatch({
+      withCallingHandlers({
         scaled_data[, , t] <- scale_lambda_timestep(
           base_rate, timeseries[, , t], base_timeseries, valid_base_lambda, lambda
         )
@@ -436,14 +436,14 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
           }
         }
       }, error = function(e) {
-        # Reports the time step t for errors from any part of the per-year
-        # body, including the delayed-anchor fallbacks, then re-throws the
-        # original error.
+        # Prints the time step t, message and dims for an error from any part
+        # of the per-year body, including the delayed-anchor fallbacks. The
+        # handler returns normally, so the original error then propagates
+        # unchanged with its call stack intact.
         cat(sprintf("\nERROR in lambda loop at time step t=%d:\n", t))
         cat(sprintf("  Message: %s\n", conditionMessage(e)))
         cat(sprintf("  scaled_data dims: %d x %d x %d\n",
                     dim(scaled_data)[1], dim(scaled_data)[2], dim(scaled_data)[3]))
-        stop(e)
       })
     }
 
