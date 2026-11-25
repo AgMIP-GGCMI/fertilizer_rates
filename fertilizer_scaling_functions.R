@@ -709,10 +709,16 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 #   end_year: Last year in time series
 #   crop: Crop name
 #   scenario: Scenario name
-#   output_dir: Directory to save plots
+#   output_dir: Directory the default PDF file name is built in; not used when
+#               plot_file is given
 #   method: Scaling method, used in the PDF file name and the
 #           original-pattern map title. Defaults to "relative", which is
 #           not the production method; main() always passes it explicitly
+#   plot_file: Full path of the PDF to write. When NULL (default), the name is
+#              built inside output_dir from crop, scenario and method (plus iam
+#              and gcm for non-histsoc scenarios, when both are given)
+#   ref_year: Reference year for the base-year panels (default: the global
+#             base_year)
 #
 # Creates:
 #   1. Original pattern (year 2000)
@@ -725,7 +731,8 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                             start_year, end_year, crop, scenario, output_dir, method = "relative",
                             spatial_data_5min = NULL, lon_5min = NULL, lat_5min = NULL,
                             iam = NULL, gcm = NULL,
-                            base_timeseries_override = NULL) {
+                            base_timeseries_override = NULL,
+                            plot_file = NULL, ref_year = base_year) {
   # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
   # useRaster argument: with the option, image() falls back to polygons on non-regular grids
   # instead of erroring.
@@ -734,6 +741,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
   # Define output PDF file and open device
   # Construct explicit, scenario/method-specific filename aligned with NetCDF naming
+  if (is.null(plot_file)) {
   if (tolower(scenario) == "histsoc") {
     plot_file <- paste0(output_dir, "/n-fertilizer_", crop,
                         "_histsoc_", method, "_annual_1850_2014_diagnostics.pdf")
@@ -747,11 +755,12 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                           method, "_annual_1850_2100_diagnostics.pdf")
     }
   }
+  }
   pdf(plot_file, width = 16, height = 14)
 
   ntime <- dim(scaled_data)[3]
   mid_idx <- ntime %/% 2
-  base_idx <- base_year - start_year + 1
+  base_idx <- ref_year - start_year + 1
   scaled_base_override <- if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
     NULL
   } else {
@@ -773,10 +782,10 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
                     start_year, end_year, mid_idx, crop, method)
 
-  plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop,
+  plot_base_year_scatter(base_rate, scaled_data, base_idx, ref_year, crop,
                          scaled_base_override = scaled_base_override)
 
-  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, base_year, end_year, crop,
+  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, ref_year, end_year, crop,
                                                scaled_base_override = scaled_base_override)
 
   plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop,
@@ -786,10 +795,10 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                          start_year, end_year, sample_locations, crop)
 
   plot_distribution_histograms(base_rate, scaled_data, timeseries, base_idx,
-                               base_year, end_year, crop,
+                               ref_year, end_year, crop,
                                base_timeseries_override = base_timeseries_override)
 
-  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, base_year, end_year,
+  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, ref_year, end_year,
                        base_timeseries_override = base_timeseries_override)
 
   # Add explicit NA-provenance masks to diagnose where output NAs come from.
