@@ -52,9 +52,9 @@ test_that("compare_relative_lambda handles all-NA histsoc input", {
   )
   pdf_path <- file.path(tmp, "comparison_relative_lambda_mai_histsoc.pdf")
   expect_true(file.exists(pdf_path))
-  # No "ERROR IN compare_relative_lambda" — the tryCatch handler must
+  # No "ERROR IN plot_relative_lambda_comparison" — the tryCatch handler must
   # not have fired (that branch is intentionally not exercised here).
-  expect_false(any(grepl("ERROR IN compare_relative_lambda", out)))
+  expect_false(any(grepl("ERROR IN plot_relative_lambda_comparison", out)))
 })
 
 test_that("compare_relative_lambda handles all-NA future-scenario input", {
@@ -68,5 +68,5 @@ test_that("compare_relative_lambda handles all-NA future-scenario input", {
   pdf_path <- file.path(tmp,
     "comparison_relative_lambda_mai_ssp126_image_gfdl-esm4.pdf")
   expect_true(file.exists(pdf_path))
-  expect_false(any(grepl("ERROR IN compare_relative_lambda", out)))
+  expect_false(any(grepl("ERROR IN plot_relative_lambda_comparison", out)))
 })

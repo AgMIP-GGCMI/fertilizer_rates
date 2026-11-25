@@ -18,7 +18,7 @@ setup_full_run <- function(envir = parent.frame()) {
   # compare_relative_lambda's plot_density_heatmap bins 12 grid cells into
   # 40x40 bins; each point lands in a unique bin, so range(z) = c(1,1) and
   # image.plot dies. The crash is caught by the tryCatch handler, but that
-  # would accidentally cover the tryCatch error handler in compare_relative_lambda() from these end-to-end tests.
+  # would accidentally cover the tryCatch error handler in plot_relative_lambda_comparison() from these end-to-end tests.
   # Stub it out so coverage of the handler comes from the targeted test at
   # tests/testthat/test-compare_relative_lambda_trycatch.R.
   # Under the production setting (lambda only) main() skips compare_relative_lambda(), so the stub only matters when both methods are enabled.

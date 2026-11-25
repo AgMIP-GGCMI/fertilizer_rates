@@ -1,11 +1,60 @@
 # ============================================================================
-# Shared Function Definitions for fertilizer_scaling.R
+# Shared Function Definitions for fertilizer_scaling_isimip3b.R
 # ============================================================================
-# Sourced by fertilizer_scaling.R. Keep this file function-definitions-only so
+# Sourced by fertilizer_scaling_isimip3b.R. Keep this file function-definitions-only so
 # it is safe to source from tests or other scripts without side effects.
 # ============================================================================
 
 source("fertilizer_scaling_plot_diagnostics_functions.R")
+
+# ============================================================================
+# Grid helpers shared by aggregate_to_halfdegree(),
+# aggregate_weighted_to_halfdegree() (ISIMIP4) and read_timeseries_nc()
+# ============================================================================
+
+# Rearrange an [nx, ny] matrix into one column per factor x factor block.
+# Returns a [factor^2, (nx/factor) * (ny/factor)] matrix whose column k holds
+# the k-th block, blocks in column-major order of the coarse grid. Callers
+# reduce the columns (colMeans, colSums) and reshape to [nx/factor, ny/factor].
+block_columns <- function(x, factor) {
+  nx <- dim(x)[1] %/% factor
+  ny <- dim(x)[2] %/% factor
+  # dim 1 is the within-block lon offset, dim 3 the within-block lat offset;
+  # aperm brings them together and the dim() assignment collapses them into
+  # one factor^2 axis per coarse cell.
+  arr <- array(x, dim = c(factor, nx, factor, ny))
+  arr <- aperm(arr, c(1, 3, 2, 4))
+  dim(arr) <- c(factor * factor, nx * ny)
+  arr
+}
+
+# Coordinates of coarse-cell centres: the mean of each run of `factor`
+# consecutive fine-grid coordinates.
+block_centres <- function(coords, factor) {
+  colMeans(matrix(coords, nrow = factor))
+}
+
+# Return list(data, lat) with lat strictly ascending. A descending lat is
+# reversed and x (2-D or 3-D, lat on dimension 2) is flipped to match. Stops
+# if lat is still not strictly ascending (i.e. it was non-monotonic).
+lat_to_ascending <- function(x, lat, label) {
+  if (any(diff(lat) < 0)) {
+    lat <- rev(lat)
+    ny <- dim(x)[2]
+    x <- if (length(dim(x)) == 3) x[, ny:1, , drop = FALSE] else x[, ny:1, drop = FALSE]
+  }
+  if (any(diff(lat) <= 0)) {
+    stop(label, ": lat is not strictly ascending after canonicalization ",
+         "(input lat is non-monotonic).")
+  }
+  list(data = x, lat = lat)
+}
+
+# Stop unless coords is strictly ascending; returns coords invisibly.
+stop_unless_ascending <- function(coords, label) {
+  if (any(diff(coords) <= 0)) stop(label, " is not strictly ascending")
+  invisible(coords)
+}
 
 # ============================================================================
 # FUNCTION: aggregate_to_halfdegree
@@ -57,50 +106,41 @@ aggregate_to_halfdegree <- function(data_5min, lon_5min, lat_5min) {
   # coordinates rather than synthesizing from scratch, so we inherit
   # whatever convention the input file uses (Mueller 5-min files are
   # north->south).
-  lon_halfdeg <- colMeans(matrix(lon_5min, nrow = agg_factor))
-  lat_halfdeg <- colMeans(matrix(lat_5min, nrow = agg_factor))
+  lon_halfdeg <- block_centres(lon_5min, agg_factor)
+  lat_halfdeg <- block_centres(lat_5min, agg_factor)
 
-  # Reshape into a 4-D layout where each 6x6 input block ends up
-  # contiguous along a single 36-element axis: dim 1 is the within-block
-  # lon offset, dim 3 is the within-block lat offset, dims 2 and 4 are
-  # the output lon/lat indices. aperm pulls the two within-block dims
-  # together; the dim() assignment then collapses them into one
-  # 36-element axis per output cell so colMeans computes all 259,200
-  # block means in a single C-level call.
-  arr <- array(data_5min, dim = c(agg_factor, nlon_out, agg_factor, nlat_out))
-  arr <- aperm(arr, c(1, 3, 2, 4))
-  dim(arr) <- c(agg_factor * agg_factor, nlon_out * nlat_out)
-  data_halfdeg <- matrix(colMeans(arr, na.rm = TRUE),
+  data_halfdeg <- matrix(colMeans(block_columns(data_5min, agg_factor), na.rm = TRUE),
                          nrow = nlon_out, ncol = nlat_out)
   # colMeans(., na.rm = TRUE) returns NaN for an all-NA column; rewrite
   # those to NA so missing data stays missing.
   data_halfdeg[is.nan(data_halfdeg)] <- NA
 
   # Canonicalize to ascending lat with data aligned south->north along the
-  # lat axis. This gives downstream code (write_netcdf_file, plot helpers,
+  # lat axis. This gives downstream code (write_fertilizer_netcdf, plot helpers,
   # fields::image.plot) an unambiguous contract regardless of which
   # convention the input file used. rev() only fixes the case where the
   # input is monotonically descending; a non-monotonic lat axis would
   # silently pass through, so verify strict ascending order after.
-  if (any(diff(lat_halfdeg) < 0)) {
-    lat_halfdeg <- rev(lat_halfdeg)
-    data_halfdeg <- data_halfdeg[, ncol(data_halfdeg):1]
-  }
-  if (any(diff(lat_halfdeg) <= 0)) {
-    stop("aggregate_to_halfdegree: lat_halfdeg is not strictly ascending ",
-         "after canonicalization (input lat is non-monotonic).")
-  }
+  res <- lat_to_ascending(data_halfdeg, lat_halfdeg, "aggregate_to_halfdegree")
+  data_halfdeg <- res$data
+  lat_halfdeg <- res$lat
   # lon_halfdeg is taken directly from the input with no canonicalization,
   # so a non-monotonic input lon would silently propagate. Production
   # 5-min files are monotonic; this catches a corrupted or hand-built input.
-  if (any(diff(lon_halfdeg) <= 0)) {
-    stop("aggregate_to_halfdegree: lon_halfdeg is not strictly ascending ",
-         "(input lon is non-monotonic).")
-  }
+  stop_unless_ascending(lon_halfdeg, "aggregate_to_halfdegree: lon_halfdeg")
 
   return(list(data = data_halfdeg, lon = lon_halfdeg, lat = lat_halfdeg))
 }
 
+
+# Extract one time slice as a [lon, lat] matrix. Plain timeseries[, , t] drops
+# length-1 dimensions (a 1 x n or n x 1 grid), and the dims checks in
+# scale_lambda_timestep then reject the result.
+timeseries_slice <- function(timeseries, t) {
+  slice <- timeseries[, , t, drop = FALSE]
+  dim(slice) <- dim(slice)[1:2]
+  slice
+}
 
 # ============================================================================
 # FUNCTION: prepare_scaling_inputs
@@ -125,7 +165,7 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
       stop(paste("Base year", base_year, "is outside the time series range",
                  start_year, "-", end_year))
     }
-    base_timeseries <- timeseries[, , base_idx]
+    base_timeseries <- timeseries_slice(timeseries, base_idx)
   }
   valid_base <- is.finite(base_rate) & base_rate > 0
   list(
@@ -136,12 +176,31 @@ prepare_scaling_inputs <- function(base_rate, timeseries, base_year,
 }
 
 # ==========================================================================
-# FUNCTION: read_timeseries_year_slice
+# FUNCTION: mask_fill_values
 # ==========================================================================
-# Read a single [lon, lat] year slice from a time-series NetCDF without
-# loading the full time axis into memory.
-# ===========================================================================
-read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year) {
+# Return x with NA wherever it equals the variable's _FillValue attribute (if
+# it has one) or has magnitude >= 1e19 (catches fill values written without
+# the attribute). `nc` is an open ncdf4 handle containing `var_name`.
+# ==========================================================================
+mask_fill_values <- function(x, nc, var_name) {
+  missval <- ncatt_get(nc, varid = var_name, attname = "_FillValue")
+  if (missval$hasatt) {
+    x[x == missval$value] <- NA
+  }
+  x[abs(x) >= 1e+19] <- NA
+  x
+}
+
+# ==========================================================================
+# FUNCTION: read_timeseries_nc
+# ==========================================================================
+# Read `time_count` steps (-1 = all remaining) of a [lon, lat, time] variable
+# starting at step `time_start`. Returns list(data, lon, lat): data is always
+# 3-D [lon, lat, t] (a single step keeps its time dimension), has fill values
+# masked to NA, and is ordered to match lat, which is strictly ascending.
+# Stops if the file or variable is missing or the steps are out of range.
+# ==========================================================================
+read_timeseries_nc <- function(ts_file, var_name, time_start = 1, time_count = -1) {
   if (!file.exists(ts_file)) {
     stop(paste("Time series file does not exist:", ts_file))
   }
@@ -150,35 +209,95 @@ read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year)
   on.exit(nc_close(nc), add = TRUE)
 
   if (!(var_name %in% names(nc$var))) {
-    stop(paste("Variable", var_name, "not found in time series file"))
+    stop(paste0("Variable ", var_name, " not found in time series file: ", ts_file))
   }
 
+  n_steps <- nc$var[[var_name]]$varsize[3]
+  if (time_count == 0 || time_count < -1) {
+    stop(paste0("time_count must be -1 (all remaining steps) or positive, not ",
+                time_count))
+  }
+  last_step <- if (time_count < 0) n_steps else time_start + time_count - 1
+  if (time_start < 1 || time_start > n_steps || last_step > n_steps) {
+    stop(paste0("Time steps ", time_start, "-", last_step, " are outside the ",
+                n_steps, " time steps in ", ts_file))
+  }
+
+  data <- ncvar_get(nc, varid = var_name,
+                    start = c(1, 1, time_start), count = c(-1, -1, time_count),
+                    collapse_degen = FALSE)
+  lon <- as.vector(ncvar_get(nc, varid = "lon"))
+  lat <- as.vector(ncvar_get(nc, varid = "lat"))
+
+  data <- mask_fill_values(data, nc, var_name)
+  res <- lat_to_ascending(data, lat, "read_timeseries_nc")
+  list(data = res$data, lon = lon, lat = res$lat)
+}
+
+# ============================================================================
+# FUNCTION: read_timeseries_files
+# ============================================================================
+# Read var_name from one or more time-series files and concatenate
+# along time. years_list gives each file's years (the file's own time axis
+# is not decoded). Each file is read with read_timeseries_nc(), so fill
+# values are NA and lat is ascending. Used for ISIMIP4 inputs and for reading
+# written outputs back for the relative-vs-lambda comparison (both rounds).
+# ============================================================================
+read_timeseries_files <- function(files, years_list, var_name) {
+  if (!is.list(years_list)) {
+    stop("read_timeseries_files: years_list must be a list with one vector of years per file")
+  }
+  if (length(files) == 0) stop("read_timeseries_files: no files given")
+  if (length(files) != length(years_list)) {
+    stop("read_timeseries_files: files and years_list differ in length")
+  }
+  pieces <- vector("list", length(files))
+  lon <- NULL
+  lat <- NULL
+  for (k in seq_along(files)) {
+    f <- files[[k]]
+    ts <- read_timeseries_nc(f, var_name)
+    if (dim(ts$data)[3] != length(years_list[[k]])) {
+      stop(f, " has ", dim(ts$data)[3], " time steps but ",
+           length(years_list[[k]]), " years were expected")
+    }
+    if (is.null(lon)) {
+      lon <- ts$lon
+      lat <- ts$lat
+    } else if (!isTRUE(all.equal(lon, ts$lon)) || !isTRUE(all.equal(lat, ts$lat))) {
+      stop("read_timeseries_files: grids differ between files")
+    }
+    pieces[[k]] <- ts$data
+  }
+  years <- unlist(years_list)
+  if (anyNA(years)) stop("read_timeseries_files: years contain NA")
+  if (any(diff(years) != 1)) stop("read_timeseries_files: years are not contiguous")
+  list(data = abind::abind(pieces, along = 3), lon = lon, lat = lat,
+       years = as.integer(years))
+}
+
+# ==========================================================================
+# FUNCTION: read_timeseries_year_slice
+# ==========================================================================
+# Read a single [lon, lat] year slice (fill values masked, lat ascending) from
+# a time-series NetCDF without loading the full time axis into memory. The
+# time step is year - file_start_year + 1; a year outside the file's time axis
+# stops with "Year <year> is outside the time series range in <file>" (followed
+# by read_timeseries_nc()'s own message). Other read errors pass through.
+# ==========================================================================
+read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year) {
   slice_idx <- year - file_start_year + 1
-  if (slice_idx < 1 || slice_idx > nc$var[[var_name]]$varsize[3]) {
-    stop(paste("Year", year, "is outside the time series range in", ts_file))
-  }
-
-  year_slice <- ncvar_get(nc, varid = var_name,
-                          start = c(1, 1, slice_idx), count = c(-1, -1, 1))
-
-  # Normalize to [lon, lat, time] so downstream indexing is shape-invariant
-  # regardless of whether ncvar_get dropped the singleton time dimension.
-  if (length(dim(year_slice)) == 2) {
-    year_slice <- array(year_slice, dim = c(nrow(year_slice), ncol(year_slice), 1))
-  }
-
-  ts_lat <- ncvar_get(nc, varid = "lat")
-  if (any(diff(ts_lat) < 0)) {
-    year_slice <- year_slice[, dim(year_slice)[2]:1, , drop = FALSE]
-  }
-
-  missval <- ncatt_get(nc, varid = var_name, attname = "_FillValue")
-  if (missval$hasatt) {
-    year_slice[year_slice == missval$value] <- NA
-  }
-  year_slice[abs(year_slice) >= 1e+19] <- NA
-
-  year_slice[, , 1, drop = FALSE][, , 1]
+  ts <- tryCatch(
+    read_timeseries_nc(ts_file, var_name, slice_idx, 1),
+    error = function(e) {
+      if (startsWith(conditionMessage(e), "Time steps ")) {
+        stop(paste0("Year ", year, " is outside the time series range in ",
+                    ts_file, " (", conditionMessage(e), ")"), call. = FALSE)
+      }
+      stop(e)
+    }
+  )
+  timeseries_slice(ts$data, 1)
 }
 
 # ============================================================================
@@ -267,9 +386,10 @@ scale_lambda_timestep <- function(base_rate, ts_t, base_timeseries,
 # ============================================================================
 # Print a warning and details for cells whose scaled value exceeds
 # 1000 kg/ha. Never alters scaled_data. Returns invisibly.
+# base_year is the reference year named in the printed cell details.
 # ============================================================================
 diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
-                                    timeseries, start_year) {
+                                    timeseries, start_year, base_year) {
   max_val <- max(scaled_data, na.rm = TRUE)
   if (max_val > 1000) {
     print(paste("WARNING: Maximum scaled value is", round(max_val, 1), "kg/ha"))
@@ -289,9 +409,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
         max_year_idx <- which.max(ts_cell)
         max_year <- start_year + max_year_idx - 1
         print(paste("\nCell", i, "at lon index", idx_lon, ", lat index", idx_lat))
-        print(paste("  Base rate (year 2000 spatial):",
+        print(paste(paste0("  Base rate (year ", base_year, " spatial):"),
                     round(base_rate[idx_lon, idx_lat], 2), "kg/ha"))
-        print(paste("  TS at base year (2000):",
+        print(paste(paste0("  TS at base year (", base_year, "):"),
                     round(base_timeseries[idx_lon, idx_lat], 2), "kg/ha"))
         print(paste("  TS at year", max_year, ":",
                     round(timeseries[idx_lon, idx_lat, max_year_idx], 2), "kg/ha"))
@@ -327,6 +447,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   base_timeseries: Optional [lon, lat] base-year slice used instead of
 #           timeseries[, , base_year] (main() passes the historical slice
 #           for future scenarios, whose series starts in 2015)
+#   anchor_timeseries: Optional [lon, lat, t] series searched for the lambda
+#           delayed-anchor year y* instead of timeseries (ISIMIP4 passes the
+#           histsoc series so every run uses the same y*)
 #
 # Returns:
 #   Scaled data [lon, lat, time]
@@ -337,7 +460,7 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 # ============================================================================
 scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
                                    start_year, end_year, method = "relative",
-                                   base_timeseries = NULL) {
+                                   base_timeseries = NULL, anchor_timeseries = NULL) {
   print(paste("Using scaling method:", method))
   lambda_max_rate <- 500
   delayed_anchor_threshold <- 1
@@ -363,7 +486,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     # are considered valid for scaling.
     for (t in 1:ntimes) {
       scaled_data[, , t] <- scale_relative_timestep(
-        base_rate, timeseries[, , t], base_timeseries, valid_base
+        base_rate, timeseries_slice(timeseries, t), base_timeseries, valid_base
       )
     }
 
@@ -373,22 +496,28 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
 
     # For positive-base cells where TS(base_year) is close to zero, use a
-    # delayed anchor year y* (first t in the loaded series with TS(t) >= threshold)
+    # delayed anchor year y* (first t in the anchor series with TS(t) >= threshold; the anchor series is anchor_timeseries when given, otherwise the loaded series)
     # and scale by TS(t)/TS(y*). This avoids undefined lambda behavior at
     # TS(base_year) ~= 0 while preserving the base-map amplitude at y*.
     delayed_anchor_cells <- is.finite(base_rate) & base_rate > 0 &
       is.finite(base_timeseries) & base_timeseries < delayed_anchor_threshold
     delayed_anchor_value <- array(NA_real_, dim = c(nlon, nlat))
+    anchor_series <- if (is.null(anchor_timeseries)) timeseries else anchor_timeseries
+    if (length(dim(anchor_series)) != 3 ||
+        !identical(dim(anchor_series)[1:2], c(nlon, nlat))) {
+      stop("anchor_timeseries must be on the same grid as timeseries")
+    }
 
     if (any(delayed_anchor_cells)) {
-      # Always search the full available series for the first anchor year with
+      # Always search the full anchor series (anchor_timeseries when given,
+      # otherwise the loaded series) for the first anchor year with
       # TS >= threshold. For future scenarios base_idx is already NA so this
       # makes no difference there; for histsoc it is essential because the
-      # base year (2000) may itself be zero while earlier years are positive.
+      # base year may itself be zero while earlier years are positive.
       for (i in 1:nlon) {
         for (j in 1:nlat) {
           if (delayed_anchor_cells[i, j]) {
-            ts_cell <- timeseries[i, j, 1:ntimes]
+            ts_cell <- anchor_series[i, j, ]
             cand <- which(is.finite(ts_cell) & ts_cell >= delayed_anchor_threshold)
             if (length(cand) > 0) {
               delayed_anchor_value[i, j] <- ts_cell[cand[1]]
@@ -406,7 +535,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
 
     for (t in 1:ntimes) {
       withCallingHandlers({
-        ts_t <- timeseries[, , t]
+        ts_t <- timeseries_slice(timeseries, t)
         slice <- scale_lambda_timestep(
           base_rate, ts_t, base_timeseries, valid_base_lambda, lambda
         )
@@ -454,7 +583,7 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
   }
   
   diagnose_extreme_values(scaled_data, base_rate, base_timeseries,
-                          timeseries, start_year)
+                          timeseries, start_year, base_year)
 
   return(scaled_data)
 }
@@ -691,13 +820,19 @@ test_scaling <- function(scaled_data, timeseries, base_rate, start_year, base_ye
 #   end_year: Last year in time series
 #   crop: Crop name
 #   scenario: Scenario name
-#   output_dir: Directory to save plots
+#   output_dir: Directory the default PDF file name is built in; not used when
+#               plot_file is given
 #   method: Scaling method, used in the PDF file name and the
 #           original-pattern map title. Defaults to "relative", which is
 #           not the production method; main() always passes it explicitly
+#   plot_file: Full path of the PDF to write. When NULL (default), the name is
+#              built inside output_dir from crop, scenario and method (plus iam
+#              and gcm for non-histsoc scenarios, when both are given)
+#   ref_year: Reference year for the base-year panels (default: the global
+#             base_year)
 #
 # Creates:
-#   1. Original pattern (year 2000)
+#   1. Original pattern (reference year)
 #   2. First year pattern
 #   3. Middle year pattern
 #   4. Last year pattern
@@ -707,7 +842,8 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                             start_year, end_year, crop, scenario, output_dir, method = "relative",
                             spatial_data_5min = NULL, lon_5min = NULL, lat_5min = NULL,
                             iam = NULL, gcm = NULL,
-                            base_timeseries_override = NULL) {
+                            base_timeseries_override = NULL,
+                            plot_file = NULL, ref_year = base_year) {
   # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
   # useRaster argument: with the option, image() falls back to polygons on non-regular grids
   # instead of erroring.
@@ -716,6 +852,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
   # Define output PDF file and open device
   # Construct explicit, scenario/method-specific filename aligned with NetCDF naming
+  if (is.null(plot_file)) {
   if (tolower(scenario) == "histsoc") {
     plot_file <- paste0(output_dir, "/n-fertilizer_", crop,
                         "_histsoc_", method, "_annual_1850_2014_diagnostics.pdf")
@@ -729,11 +866,12 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
                           method, "_annual_1850_2100_diagnostics.pdf")
     }
   }
+  }
   pdf(plot_file, width = 16, height = 14)
 
   ntime <- dim(scaled_data)[3]
   mid_idx <- ntime %/% 2
-  base_idx <- base_year - start_year + 1
+  base_idx <- ref_year - start_year + 1
   scaled_base_override <- if (!is.na(base_idx) && base_idx >= 1 && base_idx <= ntime) {
     NULL
   } else {
@@ -753,25 +891,26 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
   }
   
   plot_pattern_maps(base_rate, scaled_data, lon, lat, sample_locations,
-                    start_year, end_year, mid_idx, crop, method)
+                    start_year, end_year, mid_idx, crop, method,
+                    ref_year)
 
-  plot_base_year_scatter(base_rate, scaled_data, base_idx, base_year, crop,
+  plot_base_year_scatter(base_rate, scaled_data, base_idx, ref_year, crop,
                          scaled_base_override = scaled_base_override)
 
-  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, base_year, end_year, crop,
+  valid_rel_count <- plot_relative_change_hist(scaled_data, base_idx, ref_year, end_year, crop,
                                                scaled_base_override = scaled_base_override)
 
-  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop,
+  plot_spatial_ts_ratio(base_rate, timeseries, base_idx, lon, lat, sample_locations, crop, ref_year,
                         base_timeseries_override = base_timeseries_override)
 
   plot_sample_timeseries(base_rate, scaled_data, timeseries, lon, lat,
                          start_year, end_year, sample_locations, crop)
 
   plot_distribution_histograms(base_rate, scaled_data, timeseries, base_idx,
-                               base_year, end_year, crop,
+                               ref_year, end_year, crop,
                                base_timeseries_override = base_timeseries_override)
 
-  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, base_year, end_year,
+  plot_outlier_scatter(base_rate, scaled_data, timeseries, base_idx, ref_year, end_year,
                        base_timeseries_override = base_timeseries_override)
 
   # Add explicit NA-provenance masks to diagnose where output NAs come from.
@@ -802,6 +941,61 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 
 
 # ============================================================================
+# FUNCTION: write_fertilizer_netcdf
+# ============================================================================
+# Write a fertilizer array to a NetCDF file. Creates dirname(out_file) if
+# needed, defines fertl_<crop> on [lon, lat, time] and writes `data`, then
+# writes `global_atts` as global attributes in list order. The caller's `data`
+# is never modified.
+#
+# Args:
+#   data: Numeric array dimensioned [length(lon), length(lat), time]
+#   lon, lat: Coordinate vectors (degrees east / north)
+#   time_dim: An ncdf4::ncdim_def("time", ...) object, so each caller chooses
+#     its own time axis
+#   out_file: Output path
+#   crop: Crop name; the variable is named fertl_<crop>
+#   global_atts: Named list of global attributes
+#
+# Returns: out_file, invisibly.
+# ============================================================================
+write_fertilizer_netcdf <- function(data, lon, lat, time_dim, out_file, crop, global_atts) {
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+
+  dim_lon <- ncdim_def("lon", "degrees_east", lon)
+  dim_lat <- ncdim_def("lat", "degrees_north", lat)
+
+  # Chunk one full spatial field per timestep. With var dims ordered as
+  # [lon, lat, time], this appears as [1, 360, 720] in ncdump output.
+  chunk_sizes <- c(length(lon), length(lat), 1)
+
+  ncv <- ncvar_def(name = paste0("fertl_", crop),
+                  dim = list(dim_lon, dim_lat, time_dim),
+                  missval = 1.e+20,
+                  prec = "float",
+                  units = "kg ha-1 yr-1",
+                  longname = paste("N fertilizer application rate for", crop),
+                  # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
+                  compression = 6,
+                  chunksizes = chunk_sizes,
+                  verbose = FALSE)
+
+  nc_out <- nc_create(out_file, list(ncv), verbose = FALSE)
+  on.exit(nc_close(nc_out), add = TRUE)
+
+  # ncvar_put() overwrites the NA cells of the array it is given with the fill
+  # value, in place in R's memory. `data + 0` forces a real copy (a plain
+  # assignment would share memory), so the caller's array keeps its NAs.
+  ncvar_put(nc_out, varid = ncv, data + 0, start = c(1, 1, 1), count = c(-1, -1, -1))
+
+  for (att_name in names(global_atts)) {
+    ncatt_put(nc_out, 0, att_name, global_atts[[att_name]])
+  }
+
+  invisible(out_file)
+}
+
+# ============================================================================
 # FUNCTION: main
 # ============================================================================
 # Main processing workflow: load spatial patterns, load timeseries, scale,
@@ -815,7 +1009,7 @@ plot_diagnostics <- function(base_rate, scaled_data, timeseries, lon, lat,
 #
 # Details:
 #   - For histsoc: scales and writes 1850–2014
-#   - For future: reads only the base_year (2000) slice of the historical time series
+#   - For future: reads only the base_year slice of the historical time series
 #     (the scaling baseline) plus the 2015–2100 future series; scales and
 #     writes 2015–2100
 #   - Applies each method in scaling_methods (production: lambda only)
@@ -845,13 +1039,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   lon_5min <- ncvar_get(nc_spatial, varid = "longitude")
   lat_5min <- ncvar_get(nc_spatial, varid = "latitude")
   
-  # get fill value from NetCDF metadata
-  missval_spatial <- ncatt_get(nc_spatial, varid = paste0(input_crop, "Napprate"), attname = "_FillValue")
-  if (missval_spatial$hasatt) {
-    spatial_data[spatial_data == missval_spatial$value] <- NA
-  }
-  # also catch any extreme values that might be fill values
-  spatial_data[abs(spatial_data) >= 1e+19] <- NA
+  spatial_data <- mask_fill_values(spatial_data, nc_spatial, paste0(input_crop, "Napprate"))
   
   # handle 2D or 3D data (if only 1 time step, drop the time dimension)
   if (length(dim(spatial_data)) == 3) {
@@ -886,7 +1074,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     ts_file_future <- paste0(base_path_timeseries, "/", scenario, "soc-adapt/n-fertilizer-5crops_",
                            iam, "_", gcm, "_", scenario, "_annual_2015_2100.nc")
 
-    # Load the historical base-year slice only (year 2000), not the full
+    # Load the historical base-year slice only, not the full
     # 1850-2014 series. This avoids computing/scaling historical years in
     # future scenario tasks.
     funcgroup <- crop_to_funcgroup[[crop]]
@@ -912,16 +1100,6 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
   # List available variables for debugging
   var_names <- names(nc_ts$var)
   print(paste("Available variables in time series file:", paste(var_names, collapse = ", ")))
-  
-  # Check coordinate dimensions
-  ts_lon <- NULL
-  ts_lat <- NULL
-  if ("lon" %in% names(nc_ts$dim)) {
-    ts_lon <- ncvar_get(nc_ts, varid = "lon")
-  }
-  if ("lat" %in% names(nc_ts$dim)) {
-    ts_lat <- ncvar_get(nc_ts, varid = "lat")
-  }
   
   # get functional group for this crop
   funcgroup <- crop_to_funcgroup[[crop]]
@@ -950,25 +1128,12 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     }
   }
   
-  # load time series data [lon, lat, time]
-  ts_data <- ncvar_get(nc_ts, varid = funcgroup)
-  print(paste("Future TS dims:", paste(dim(ts_data), collapse = "x")))
-  # Canonicalize lat axis to ascending to match aggregate_to_halfdegree's
-  # output convention. ISIMIP3b TS files store lat north->south.
-  if (!is.null(ts_lat) && any(diff(ts_lat) < 0)) {
-    ts_data <- ts_data[, dim(ts_data)[2]:1, ]
-  }
-  time_vals <- ncvar_get(nc_ts, varid = "time")
-  
-  # get fill value from NetCDF metadata
-  missval_ts <- ncatt_get(nc_ts, varid = funcgroup, attname = "_FillValue")
-  if (missval_ts$hasatt) {
-    ts_data[ts_data == missval_ts$value] <- NA
-  }
-  # also catch any extreme values that might be fill values
-  ts_data[abs(ts_data) >= 1e+19] <- NA
-  
   nc_close(nc_ts)
+  
+  # load time series data [lon, lat, time]: fill values masked, lat ascending
+  # to match aggregate_to_halfdegree's output convention
+  ts_data <- read_timeseries_nc(ts_file, funcgroup)$data
+  print(paste("Future TS dims:", paste(dim(ts_data), collapse = "x")))
   
   # Combine historical and future data if needed
   if (scenario != "histsoc") {
@@ -1003,7 +1168,7 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     print("Running validation tests...")
     test_scaling(scaled_data, ts_data, base_rate, start_year_ts, base_year, method = method)
     
-    # Create diagnostic plots BEFORE writing NetCDF (ncvar_put modifies the array in place!)
+    # The plots can come before or after the NetCDF writes: write_fertilizer_netcdf() doesn't modify scaled_data
     print("Creating diagnostic plots...")
     plot_diagnostics(base_rate, scaled_data, ts_data, lon_halfdeg, lat_halfdeg,
             start_year_ts, end_year_ts, crop, scenario, output_dir, method = method,
@@ -1014,48 +1179,17 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
     # Write output file(s)
     write_netcdf_file <- function(data_slice, yr_start, yr_end, out_file) {
       print(paste("Writing output to", out_file))
-      
-      # create output directory
-      out_dir <- dirname(out_file)
-      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-      
-      # define dimensions
-      dim_lon <- ncdim_def("lon", "degrees_east", lon_halfdeg)
-      dim_lat <- ncdim_def("lat", "degrees_north", lat_halfdeg)
+
       dim_time <- ncdim_def("time", paste("years since", yr_start - 1, "-1-1 00:00:00"),
                            (yr_start:yr_end) - (yr_start - 1))
 
-      # Chunk one full spatial field per timestep. With var dims ordered as
-      # [lon, lat, time], this appears as [1, 360, 720] in ncdump output.
-      chunk_sizes <- c(length(lon_halfdeg), length(lat_halfdeg), 1)
-      
-      # define variable
-      ncv <- ncvar_def(name = paste0("fertl_", crop),
-                      dim = list(dim_lon, dim_lat, dim_time),
-                      missval = 1.e+20,
-                      prec = "float",
-                      units = "kg ha-1 yr-1",
-                      longname = paste("N fertilizer application rate for", crop),
-                      # Level 6 gets most of level 9's compression at a fraction of the write time; the level affects only storage, not values.
-                      compression = 6,
-                      chunksizes = chunk_sizes,
-                      verbose = FALSE)
-      
-      # create file
-      nc_out <- nc_create(out_file, list(ncv), verbose = FALSE)
-      
-      # write data
-      ncvar_put(nc_out, varid = ncv, data_slice, start = c(1, 1, 1), count = c(-1, -1, -1))
-      
-      # add global attributes
-      ncatt_put(nc_out, 0, "source", "Scaled from Mueller et al. fertilizer data and ISIMIP3b time series")
-      ncatt_put(nc_out, 0, "contact", "info@pik-potsdam.de")
-      ncatt_put(nc_out, 0, "institution", "Potsdam Institute for Climate Impact Research")
-      ncatt_put(nc_out, 0, "base_year", base_year)
-      ncatt_put(nc_out, 0, "scaling_method", method)
-      ncatt_put(nc_out, 0, "creation_date", as.character(Sys.Date()))
-      
-      nc_close(nc_out)
+      write_fertilizer_netcdf(data_slice, lon_halfdeg, lat_halfdeg, dim_time, out_file, crop,
+        list(source = "Scaled from Mueller et al. fertilizer data and ISIMIP3b time series",
+             contact = "info@pik-potsdam.de",
+             institution = "Potsdam Institute for Climate Impact Research",
+             base_year = base_year,
+             scaling_method = method,
+             creation_date = as.character(Sys.Date())))
     }
     
     # Write file(s) depending on scenario
@@ -1107,6 +1241,9 @@ main <- function(crop, scenario, iam = NULL, gcm = NULL) {
 #   iam: IAM model name (NULL for histsoc)
 #   gcm: GCM name (NULL for histsoc)
 #   output_dir: Directory to save comparison plots
+#
+# Builds the ISIMIP3b file paths, then delegates reading and plotting to
+# compare_relative_lambda_files() with ref_year = base_year (the settings global).
 # ============================================================================
 compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, output_dir) {
   old_opts <- options(preferRaster = TRUE)
@@ -1141,36 +1278,90 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
     return()
   }
   
-  # Load relative method data
-  nc_rel <- nc_open(rel_file)
-  rel_data <- ncvar_get(nc_rel, varid = paste0("fertl_", crop))
-  lon <- ncvar_get(nc_rel, varid = "lon")
-  lat <- ncvar_get(nc_rel, varid = "lat")
-  nc_close(nc_rel)
-
-  
-  # Load lambda method data
-  nc_lambda <- nc_open(lambda_file)
-  lambda_data <- ncvar_get(nc_lambda, varid = paste0("fertl_", crop))
-  nc_close(nc_lambda)
-
-  
-  # Ensure lon and lat are strictly increasing for image.plot
-  # Handle any legacy files with different coordinate ordering
-  if (any(diff(lon) <= 0)) {
-    print("DIAGNOSTIC: lon coordinates not increasing, sorting...")
-    lon_order <- order(lon)
-    lon <- lon[lon_order]
-    rel_data <- rel_data[lon_order, , ]
-    lambda_data <- lambda_data[lon_order, , ]
-
-  }
-    
   # Create comparison PDF
   plot_file <- paste0(output_dir, "/comparison_relative_lambda_", crop, 
                       ifelse(scenario == "histsoc", "_histsoc.pdf",
                              paste0("_", scenario, "_", iam, "_", gcm, ".pdf")))
   
+  compare_relative_lambda_files(rel_file, lambda_file, list(start_year:end_year),
+                                paste0("fertl_", crop), crop, plot_file,
+                                ref_year = base_year)
+}
+
+# ============================================================================
+# FUNCTION: compare_relative_lambda_files
+# ============================================================================
+# Write the relative-vs-lambda comparison PDF from written output files
+#
+# Args:
+#   rel_files: Relative-method files (full paths), in time order
+#   lambda_files: Lambda-method files (full paths), in time order
+#   years_list: List of integer year vectors, one per file (the same for both methods)
+#   var_name: Variable to read from each file
+#   crop: Crop name
+#   plot_file: Full path of the PDF to write
+#   ref_year: Reference year, as in plot_relative_lambda_comparison()
+#
+# Reads both methods with read_timeseries_files(), stops if their grids differ,
+# sorts lon into increasing order (image.plot needs it) and delegates plotting
+# to plot_relative_lambda_comparison() over the years read.
+# ============================================================================
+compare_relative_lambda_files <- function(rel_files, lambda_files, years_list, var_name,
+                                          crop, plot_file, ref_year) {
+  rel <- read_timeseries_files(rel_files, years_list, var_name)
+  lambda <- read_timeseries_files(lambda_files, years_list, var_name)
+  if (!isTRUE(all.equal(rel$lon, lambda$lon)) || !isTRUE(all.equal(rel$lat, lambda$lat))) {
+    stop("compare_relative_lambda_files: relative and lambda grids differ")
+  }
+  lon <- rel$lon
+  rel_data <- rel$data
+  lambda_data <- lambda$data
+
+  # Ensure lon is strictly increasing for image.plot
+  # Handle any legacy files with different coordinate ordering
+  if (any(diff(lon) <= 0)) {
+    print("DIAGNOSTIC: lon coordinates not increasing, sorting...")
+    lon_order <- order(lon)
+    lon <- lon[lon_order]
+    rel_data <- rel_data[lon_order, , , drop = FALSE]
+    lambda_data <- lambda_data[lon_order, , , drop = FALSE]
+  }
+
+  plot_relative_lambda_comparison(rel_data, lambda_data, lon, rel$lat,
+                                  start_year = min(rel$years), end_year = max(rel$years),
+                                  crop = crop, plot_file = plot_file, ref_year = ref_year)
+}
+
+
+# ============================================================================
+# FUNCTION: plot_relative_lambda_comparison
+# ============================================================================
+# Write the relative-vs-lambda comparison PDF from in-memory arrays
+#
+# Args:
+#   rel_data: Relative-method data [lon, lat, time]
+#   lambda_data: Lambda-method data [lon, lat, time]
+#   lon: Longitude values (strictly increasing)
+#   lat: Latitude values
+#   start_year: Year of the first time step
+#   end_year: Year of the last time step
+#   crop: Crop name
+#   plot_file: Full path of the PDF to write
+#   ref_year: Reference year for the base-year map panels, the r<1 mask
+#             panels and the base-year density panel. When it lies outside
+#             start_year..end_year, the base-year maps and ratio diagnostics are
+#             skipped, the masks use the first year as reference and the density
+#             panel shows the middle year
+# ============================================================================
+plot_relative_lambda_comparison <- function(rel_data, lambda_data, lon, lat,
+                                            start_year, end_year, crop,
+                                            plot_file, ref_year) {
+  # Raster-encode image()/image.plot() panels (far smaller PDFs, faster). The option, not a
+  # useRaster argument: with the option, image() falls back to polygons on non-regular grids
+  # instead of erroring.
+  old_opts <- options(preferRaster = TRUE)
+  on.exit(options(old_opts), add = TRUE)
+
   tryCatch({
   pdf(plot_file, width = 16, height = 14)
   # Increase right margin to give legend labels more space
@@ -1320,30 +1511,30 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
                axis.args = list(at = c(0, 1), labels = c("no", "yes")))
   }
   
-  # Get base year index (2000 relative to start_year)
-  base_idx <- base_year - start_year + 1
+  # Index of the reference year relative to start_year
+  base_idx <- ref_year - start_year + 1
   first_idx <- 1
   last_idx <- dim(rel_data)[3]
   mid_idx <- last_idx %/% 2
 
   
-  # ===== YEAR 2000 (if in range) =====
+  # ===== REFERENCE YEAR (if in range) =====
   if (base_idx >= 1 && base_idx <= last_idx) {
-    print("DIAGNOSTIC: Plotting Year 2000 maps")
+    print(paste("DIAGNOSTIC: Plotting Year", ref_year, "maps"))
     plot_map_comp(lon, lat, rel_data[, , base_idx], 
-            paste(crop, "- Year 2000 (Relative)"), diverging = FALSE)
+            paste(crop, paste0("- Year ", ref_year, " (Relative)")), diverging = FALSE)
     plot_map_comp(lon, lat, lambda_data[, , base_idx], 
-            paste(crop, "- Year 2000 (Lambda)"), diverging = FALSE)
-    diff_2000 <- lambda_data[, , base_idx] - rel_data[, , base_idx]
-    plot_map_comp(lon, lat, diff_2000, 
-            paste(crop, "- Year 2000 (Lambda - Relative)"), diverging = TRUE, log_scale = TRUE)
+            paste(crop, paste0("- Year ", ref_year, " (Lambda)")), diverging = FALSE)
+    diff_ref <- lambda_data[, , base_idx] - rel_data[, , base_idx]
+    plot_map_comp(lon, lat, diff_ref, 
+            paste(crop, paste0("- Year ", ref_year, " (Lambda - Relative)")), diverging = TRUE, log_scale = TRUE)
 
       # Ratio diagnostics (expect near equality in base year)
       rel_base <- rel_data[, , base_idx]
       lambda_base <- lambda_data[, , base_idx]
       valid_b <- is.finite(rel_base) & is.finite(lambda_base) & rel_base > 0
       n_equalish <- sum(abs(lambda_base[valid_b] - rel_base[valid_b]) < 1e-6)
-      cat(sprintf("DIAGNOSTIC: Year 2000 equality count (|Δ|<1e-6): %d / %d\n", n_equalish, sum(valid_b)))
+      cat(sprintf("DIAGNOSTIC: Year %d equality count (|Δ|<1e-6): %d / %d\n", as.integer(ref_year), n_equalish, sum(valid_b)))
   }
   
   # ===== FIRST YEAR =====
@@ -1414,12 +1605,12 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   
   # ===== NEW PAGE: r<1 masks (decreases vs reference year) =====
   # Start a new page with 2x2 layout; show start and end year masks
-  # For ssp data (base_year out of range), use first_year as reference
+  # For ssp data (ref_year out of range), use first_year as reference
   par(mfrow = c(2, 2), mar = c(4, 4, 3, 6))
   
-  # Determine reference year: use base_year if in range, else first_year
+  # Determine reference year: use ref_year if in range, else first_year
   ref_idx <- if (base_idx >= 1 && base_idx <= last_idx) base_idx else first_idx
-  ref_year <- if (base_idx >= 1 && base_idx <= last_idx) base_year else start_year
+  mask_ref_year <- if (base_idx >= 1 && base_idx <= last_idx) ref_year else start_year
   
   rel_ref <- rel_data[, , ref_idx]
   
@@ -1432,7 +1623,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   mask_first[valid_first] <- 0
   mask_first[valid_first & r_first < 1] <- 1
   plot_mask_panel(lon, lat, mask_first, 
-                  paste(crop, "- r<1 (Year", start_year, "vs", ref_year, ")"))
+                  paste(crop, "- r<1 (Year", start_year, "vs", mask_ref_year, ")"))
 
   # Last year mask
   rel_last <- rel_data[, , last_idx]
@@ -1443,7 +1634,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   mask_last[valid_last] <- 0
   mask_last[valid_last & r_last < 1] <- 1
   plot_mask_panel(lon, lat, mask_last, 
-                  paste(crop, "- r<1 (Year", end_year, "vs", ref_year, ")"))
+                  paste(crop, "- r<1 (Year", end_year, "vs", mask_ref_year, ")"))
   
   # ===== SCATTER/HEATMAP PLOTS =====
   # Reset layout to 4x3 for density plots
@@ -1496,19 +1687,18 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
     plot.new(); text(0.5, 0.5, "Insufficient last year data")
   }
   
-  # Heatmap 4: Year 2000 or middle year (2D density)
-  if (scenario == "histsoc") {
-    if (base_idx >= 1 && base_idx <= last_idx) {
-      rel_base_flat <- as.vector(rel_data[, , base_idx])
-      lambda_base_flat <- as.vector(lambda_data[, , base_idx])
-      valid_base <- is.finite(rel_base_flat) & is.finite(lambda_base_flat) & rel_base_flat > 0 & lambda_base_flat > 0
-      if (sum(valid_base) > 10) {
-        x_base <- rel_base_flat[valid_base]
-        y_base <- lambda_base_flat[valid_base]
-        plot_density_heatmap(x_base, y_base, main_title = "Density: Rates Year 2000")
-      } else {
-        plot.new(); text(0.5, 0.5, "Insufficient 2000 data")
-      }
+  # Heatmap 4: base-year rates when the reference year is within the series
+  # (historical runs), otherwise middle-year rates (future runs)
+  if (base_idx >= 1 && base_idx <= last_idx) {
+    rel_base_flat <- as.vector(rel_data[, , base_idx])
+    lambda_base_flat <- as.vector(lambda_data[, , base_idx])
+    valid_base <- is.finite(rel_base_flat) & is.finite(lambda_base_flat) & rel_base_flat > 0 & lambda_base_flat > 0
+    if (sum(valid_base) > 10) {
+      x_base <- rel_base_flat[valid_base]
+      y_base <- lambda_base_flat[valid_base]
+      plot_density_heatmap(x_base, y_base, main_title = paste("Density: Rates Year", ref_year))
+    } else {
+      plot.new(); text(0.5, 0.5, paste("Insufficient", ref_year, "data"))
     }
   } else {
     # Middle year for future scenario
@@ -1530,7 +1720,7 @@ compare_relative_lambda <- function(crop, scenario, iam = NULL, gcm = NULL, outp
   dev.off()
   print(paste("Comparison plot saved to", plot_file))
   }, error = function(e) {
-    print("============ ERROR IN compare_relative_lambda ============")
+    print("============ ERROR IN plot_relative_lambda_comparison ============")
     print(paste("Error message:", e$message))
     print("Stack trace:")
     print(traceback())

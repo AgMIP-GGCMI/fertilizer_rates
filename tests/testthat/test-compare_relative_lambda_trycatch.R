@@ -1,13 +1,13 @@
 # tests/testthat/test-compare_relative_lambda_trycatch.R
 #
-# Covers compare_relative_lambda's tryCatch error handler (the one that prints "ERROR IN compare_relative_lambda")
+# Covers the tryCatch error handler in plot_relative_lambda_comparison() (the one that prints "ERROR IN plot_relative_lambda_comparison"), reached through compare_relative_lambda()
 # by feeding rel + lambda NetCDFs whose 12 cells have pairwise-distinct
 # (trend_rel, trend_lambda) signatures. The 40x40 bin histogram in
 # plot_density_heatmap then puts every point in its own bin, so
 # range(z, na.rm = TRUE) = c(1, 1), zlim collapses, and image.plot fails
 # with "increasing 'x' and 'y' values expected" — caught by the handler.
 
-test_that("compare_relative_lambda's tryCatch catches plot_density_heatmap zlim collapse", {
+test_that("compare_relative_lambda's plot_relative_lambda_comparison tryCatch catches plot_density_heatmap zlim collapse", {
   tmp <- withr::local_tempdir()
   local_mocked_globals(output_base_path = tmp)
 
@@ -42,6 +42,6 @@ test_that("compare_relative_lambda's tryCatch catches plot_density_heatmap zlim 
   out <- capture.output(
     compare_relative_lambda("mai", "histsoc", output_dir = tmp)
   )
-  expect_true(any(grepl("ERROR IN compare_relative_lambda", out)))
+  expect_true(any(grepl("ERROR IN plot_relative_lambda_comparison", out)))
   expect_true(any(grepl("increasing 'x' and 'y' values expected", out)))
 })

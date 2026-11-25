@@ -1,48 +1,52 @@
-# Tests for NetCDF chunking choices used by write_netcdf_file() in
-# fertilizer_scaling_functions.R.
+# Tests for write_fertilizer_netcdf() in fertilizer_scaling_functions.R:
+# the chunking and compression choices of the output variable, the global
+# attributes, and that the caller's array is left unmodified.
 
-test_that("NetCDF variable chunking is full-space x single-time", {
-  tmp <- withr::local_tempfile(fileext = ".nc")
-
+make_writer_inputs <- function() {
   lon <- seq(-179.75, by = 0.5, length.out = 4)
   lat <- seq(-89.75, by = 0.5, length.out = 3)
   yrs <- 2015:2017
+  dim_time <- ncdf4::ncdim_def("time", "years since 2014-1-1 00:00:00", yrs - 2014)
+  arr <- array(as.numeric(seq_len(length(lon) * length(lat) * length(yrs))),
+               dim = c(length(lon), length(lat), length(yrs)))
+  list(lon = lon, lat = lat, dim_time = dim_time, arr = arr)
+}
 
-  dim_lon <- ncdf4::ncdim_def("lon", "degrees_east", lon)
-  dim_lat <- ncdf4::ncdim_def("lat", "degrees_north", lat)
-  dim_time <- ncdf4::ncdim_def(
-    "time",
-    "years since 2014-1-1 00:00:00",
-    yrs - 2014
-  )
+test_that("NetCDF variable chunking is full-space x single-time", {
+  tmp <- withr::local_tempfile(fileext = ".nc")
+  x <- make_writer_inputs()
 
-  # Match the production writer's chunking contract:
-  # [lon, lat, time] -> chunks [nlon, nlat, 1].
-  chunk_sizes <- c(length(lon), length(lat), 1)
+  write_fertilizer_netcdf(x$arr, x$lon, x$lat, x$dim_time, tmp, "mai",
+                          list(source = "test source"))
 
-  ncv <- ncdf4::ncvar_def(
-    name = "fertl_mai",
-    units = "kg ha-1 yr-1",
-    dim = list(dim_lon, dim_lat, dim_time),
-    missval = 1.e+20,
-    prec = "float",
-    compression = 6,
-    chunksizes = chunk_sizes,
-    verbose = FALSE
-  )
-
-  nc <- ncdf4::nc_create(tmp, list(ncv), verbose = FALSE)
+  nc <- ncdf4::nc_open(tmp)
   on.exit(ncdf4::nc_close(nc), add = TRUE)
 
-  arr <- array(seq_len(length(lon) * length(lat) * length(yrs)),
-               dim = c(length(lon), length(lat), length(yrs)))
-  ncdf4::ncvar_put(nc, varid = ncv, arr)
-  on.exit(NULL, add = FALSE)
-  ncdf4::nc_close(nc)
+  expect_equal(nc$var[["fertl_mai"]]$chunksizes, c(length(x$lon), length(x$lat), 1))
+  expect_equal(nc$var[["fertl_mai"]]$compression, 6)
+  expect_equal(ncdf4::ncatt_get(nc, 0, "source")$value, "test source")
+})
 
-  nc2 <- ncdf4::nc_open(tmp)
-  on.exit(ncdf4::nc_close(nc2), add = TRUE)
+test_that("write_fertilizer_netcdf creates the directory and returns the path invisibly", {
+  tmp <- file.path(withr::local_tempdir(), "a", "b", "out.nc")
+  x <- make_writer_inputs()
 
-  actual <- nc2$var[["fertl_mai"]]$chunksizes
-  expect_equal(actual, chunk_sizes)
+  res <- withVisible(write_fertilizer_netcdf(x$arr, x$lon, x$lat, x$dim_time, tmp, "mai", list(k = "v")))
+
+  expect_false(res$visible)
+  expect_equal(res$value, tmp)
+  expect_true(file.exists(tmp))
+})
+
+test_that("write_fertilizer_netcdf does not modify the caller's array", {
+  tmp <- withr::local_tempfile(fileext = ".nc")
+  x <- make_writer_inputs()
+  x$arr[2, 2, 2] <- NA
+  # `+ 0` forces a real copy; a plain assignment would share memory with x$arr and weaken this test.
+  before <- x$arr + 0
+
+  write_fertilizer_netcdf(x$arr, x$lon, x$lat, x$dim_time, tmp, "mai", list(k = "v"))
+
+  expect_true(is.na(x$arr[2, 2, 2]))
+  expect_identical(x$arr, before)
 })

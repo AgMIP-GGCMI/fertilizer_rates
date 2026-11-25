@@ -78,9 +78,9 @@ Both `.Renviron` and `data/` are gitignored, so every checkout needs its own cop
 
 How `.Renviron` is picked up:
 
-- R reads it only when started with the repo root as the working directory. The relative paths above resolve against that directory too. (`fertilizer_scaling.R` has to be run from the repo root anyway, because it `source()`s its siblings by relative path.)
+- R reads it only when started with the repo root as the working directory. The relative paths above resolve against that directory too. (`fertilizer_scaling_isimip3b.R` has to be run from the repo root anyway, because it `source()`s its siblings by relative path.)
 - Its values take precedence over same-named variables exported in your shell: `FERT_OUTPUT_BASE_PATH=/tmp/x Rscript …` has no effect while `.Renviron` sets that variable.
-- `Rscript --vanilla` skips it. The SLURM job script `submit_fertilizer_scaling_full.jcf` runs that way (from a hard-coded checkout directory), so cluster jobs ignore `.Renviron` and use the default paths — unless a `FERT_*` variable is exported in the shell you run `sbatch` from, which SLURM passes through by default.
+- `Rscript --vanilla` skips it. The SLURM job script `submit_fertilizer_scaling_full.jcf` runs that way (from a hard-coded checkout directory, through `slurm_run_task.sh`, which it sources), so cluster jobs ignore `.Renviron` and use the default paths — unless a `FERT_*` variable is exported in the shell you run `sbatch` from, which SLURM passes through by default.
 
 Expected layout under `data/`:
 
@@ -103,7 +103,7 @@ data/
 
 ### Missing inputs
 
-Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing, or lacks the crop's variable, does stop with an error: `Time series file does not exist: <path>` or `Variable <funcgroup> not found in time series file`.)
+Most missing inputs are not errors. If the 5-arcmin file or the scenario's own time-series file is missing, `main()` prints `Input file does not exist: <path>` or `Time series file does not exist: <path>`, returns without writing anything, and the process still exits with status 0. The log's final `Completed processing for <crop>` line appears even then, so if a run produces no output, look for the `does not exist` line. (A future-scenario run whose histsoc time-series file is missing, or lacks the crop's variable, does stop with an error: `Time series file does not exist: <path>` or `Variable <funcgroup> not found in time series file: <path>`.)
 
 ## Testing
 

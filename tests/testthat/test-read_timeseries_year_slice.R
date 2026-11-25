@@ -33,3 +33,33 @@ test_that("read_timeseries_year_slice matches the old full-read base-year slice"
 
   expect_equal(helper_slice, expected_slice)
 })
+
+test_that("read_timeseries_year_slice names the year when it is outside the file", {
+  path <- file.path(withr::local_tempdir(), "ts.nc")
+  make_ts_nc(path, var_name = "fertl_c4ann", lon = c(0, 1, 2), lat = c(10, 5),
+             nyears = 5, start_year = 1850)
+  expect_error(read_timeseries_year_slice(path, "fertl_c4ann", 1855, 1850),
+               "Year 1855 is outside the time series range in", fixed = TRUE)
+  expect_error(read_timeseries_year_slice(path, "fertl_c4ann", 1849, 1850),
+               "Year 1849 is outside the time series range in", fixed = TRUE)
+})
+
+test_that("read_timeseries_year_slice passes missing file and variable errors through", {
+  path <- file.path(withr::local_tempdir(), "ts.nc")
+  expect_error(read_timeseries_year_slice(path, "fertl_c4ann", 1850, 1850),
+               paste("Time series file does not exist:", path), fixed = TRUE)
+  make_ts_nc(path, var_name = "fertl_c4ann", lon = c(0, 1, 2), lat = c(10, 5),
+             nyears = 2, start_year = 1850)
+  expect_error(read_timeseries_year_slice(path, "nope", 1850, 1850),
+               "Variable nope not found in time series file", fixed = TRUE)
+})
+
+test_that("read_timeseries_year_slice keeps [lon, lat] dims for a 1xN grid", {
+  path <- file.path(withr::local_tempdir(), "ts.nc")
+  make_ts_nc(path, var_name = "fertl_c4ann", lon = 0, lat = c(10, 5, 0),
+             nyears = 2, start_year = 1850,
+             data = array(1:6, dim = c(1, 3, 2)))
+  res <- read_timeseries_year_slice(path, "fertl_c4ann", 1851, 1850)
+  expect_equal(dim(res), c(1, 3))
+  expect_equal(as.vector(res), c(6, 5, 4))
+})

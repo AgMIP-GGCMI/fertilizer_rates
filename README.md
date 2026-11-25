@@ -4,7 +4,7 @@ R scripts that prepare gridded nitrogen-fertilizer application rates for the agr
 
 ## What this does
 
-`fertilizer_scaling.R` produces per-crop, half-degree (0.5°), annual N-fertilizer application-rate NetCDF files covering 1850–2100 for the 15 ISIMIP3b / GGCMI crops (`swh`, `wwh`, `mai`, `ri1`, `ri2`, `soy`, `mil`, `sor`, `pea`, `sgb`, `cas`, `rap`, `sun`, `nut`, `sgc`). It combines two inputs per crop:
+`fertilizer_scaling_isimip3b.R` (the ISIMIP3b group III script; an ISIMIP4 script is coming in this branch) produces per-crop, half-degree (0.5°), annual N-fertilizer application-rate NetCDF files covering 1850–2100 for the 15 ISIMIP3b / GGCMI crops (`swh`, `wwh`, `mai`, `ri1`, `ri2`, `soy`, `mil`, `sor`, `pea`, `sgb`, `cas`, `rap`, `sun`, `nut`, `sgc`). It combines two inputs per crop:
 
 - a **spatial baseline** at 5 arc-minute resolution from Mueller et al. (year-2000 sub-national application rates), aggregated up to 0.5°, and
 - a **temporal time series** at 0.5° from ISIMIP3b's socioeconomic inputs, indexed by crop functional group (`fertl_c3ann`, `fertl_c4ann`, `fertl_c3nfx`, `fertl_c3per`, `fertl_c4per`).
@@ -39,7 +39,7 @@ Rscript -e 'renv::restore()'
 
 The lockfile also covers the dev and test tools (covr, lintr, DT, shiny, diffviewer and their dependencies), and some locked versions are archived CRAN releases that need a source build (e.g. `fields` needs gfortran). If you only run the scripts, restore just what they load: `Rscript -e 'renv::restore(packages = c("ncdf4", "fields", "abind", "MASS", "testthat"))'`.
 
-Alternatively, use the devcontainer described in [DEVELOPMENT.md](DEVELOPMENT.md), which provides the packages (restored from `renv.lock`), or set `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` to skip renv and use your own library, as the SLURM job script does.
+Alternatively, use the devcontainer described in [DEVELOPMENT.md](DEVELOPMENT.md), which provides the packages (restored from `renv.lock`), or set `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` to skip renv and use your own library, as `slurm_run_task.sh` does.
 
 ### Input and output locations
 
@@ -50,13 +50,13 @@ By default the script reads its inputs from, and writes its outputs to, fixed pa
 Run from the repo root. Each invocation processes one crop for one scenario:
 
 ```bash
-Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]
+Rscript fertilizer_scaling_isimip3b.R <crop> <scenario> [iam] [gcm]
 
 # Historical, 1850–2014
-Rscript fertilizer_scaling.R mai histsoc
+Rscript fertilizer_scaling_isimip3b.R mai histsoc
 
 # Future, 2015–2100 (iam and gcm are required)
-Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
+Rscript fertilizer_scaling_isimip3b.R mai ssp585 image gfdl-esm4
 ```
 
 | Argument | Values |
@@ -94,7 +94,7 @@ When both methods are enabled, a comparison PDF is also written to the scenario 
 sbatch submit_fertilizer_scaling_full.jcf
 ```
 
-It changes into a hard-coded `SCRIPT_DIR`, writes logs to `logs/` under the default output path (the `--output`, `--error`, and `mkdir -p` lines), and charges the `macmit` account. It runs `Rscript --vanilla`, which ignores `.Renviron`, so outputs go to the default production output path unless you export the `FERT_*` variables in your shell before running `sbatch`. Edit these before submitting from another checkout or account, and if you change the log location, create that directory before running `sbatch` (SLURM won't create it).
+The job body (module load, task checks, `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE`, the `Rscript --vanilla` call) lives in `slurm_run_task.sh`, which the `.jcf` sources from `SCRIPT_DIR`; it must sit there next to the `.jcf` on the cluster, or the job exits with status 4. The job changes into a hard-coded `SCRIPT_DIR`, writes logs to `logs/` under the default output path (the `--output`, `--error`, and `mkdir -p` lines), and charges the `macmit` account. It runs `Rscript --vanilla`, which ignores `.Renviron`, so outputs go to the default production output path unless you export the `FERT_*` variables in your shell before running `sbatch`. Edit these before submitting from another checkout or account, and if you change the log location, create that directory before running `sbatch` (SLURM won't create it).
 
 ## Development
 

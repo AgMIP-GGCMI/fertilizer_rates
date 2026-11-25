@@ -9,10 +9,10 @@
 #   - neither funcgroup nor alt_name in the TS file
 #                                        -> "ERROR: Neither ... nor ... found in file"
 #
-# Errors (future scenario; raised by read_timeseries_year_slice()):
+# Errors (future scenario; raised by read_timeseries_nc() via read_timeseries_year_slice()):
 #   - histsoc TS file missing            -> "Time series file does not exist: <path>"
 #   - funcgroup variable missing from the histsoc TS file
-#                                        -> "Variable <funcgroup> not found in time series file"
+#                                        -> "Variable <funcgroup> not found in time series file: <path>"
 #
 # Each test points main()'s base paths at fresh tempdirs. Early-return tests
 # capture main()'s printed output and grep it for the message; error tests

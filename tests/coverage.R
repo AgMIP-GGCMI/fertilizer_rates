@@ -40,8 +40,9 @@ tests_slow <- list.files("tests/testthat-slow", pattern = "^test-.*\\.R$", full.
 # Slow test bootstrap files. covr does not source setup.R (see header
 # comment), so we inject the bits the slow tests need into covr's env via
 # the test_files list:
-#   * fertilizer_scaling_settings.R defines library() loads and the
-#     constants (crop_to_inputfile etc.) that main() reads at runtime.
+#   * fertilizer_scaling_settings.R sources the shared settings (library()
+#     loads) and defines the constants (crop_to_inputfile etc.) that main()
+#     reads at runtime.
 #   * tools/diagnostics_png_harness.R defines render_diagnostics_to_png().
 #     The slow test file also sources it via source(...) (no local=TRUE),
 #     which would land it in globalenv — outside covr's env, breaking

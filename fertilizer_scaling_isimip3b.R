@@ -1,5 +1,5 @@
 # ============================================================================
-# Fertilizer Scaling Script
+# Fertilizer Scaling Script: ISIMIP3b group III (for ISIMIP4, see fertilizer_scaling_isimip4.R)
 # ============================================================================
 # 
 # Purpose:
@@ -87,9 +87,9 @@ if (length(args) == 0) {
 
 # Validate and parse CLI arguments for production usage
 if (length(args) < 2) {
-  stop("Usage: Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]\n",
-       "Example (historical): Rscript fertilizer_scaling.R mai histsoc\n",
-       "Example (future):     Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4")
+  stop("Usage: Rscript fertilizer_scaling_isimip3b.R <crop> <scenario> [iam] [gcm]\n",
+       "Example (historical): Rscript fertilizer_scaling_isimip3b.R mai histsoc\n",
+       "Example (future):     Rscript fertilizer_scaling_isimip3b.R mai ssp585 image gfdl-esm4")
 }
 
 crop <- args[1]
@@ -110,9 +110,9 @@ main(crop, scenario, iam, gcm)
 # ============================================================================
 #
 # Run from the repo root, one crop and scenario per invocation:
-#   Rscript fertilizer_scaling.R <crop> <scenario> [iam] [gcm]
-#   Rscript fertilizer_scaling.R mai histsoc
-#   Rscript fertilizer_scaling.R mai ssp585 image gfdl-esm4
+#   Rscript fertilizer_scaling_isimip3b.R <crop> <scenario> [iam] [gcm]
+#   Rscript fertilizer_scaling_isimip3b.R mai histsoc
+#   Rscript fertilizer_scaling_isimip3b.R mai ssp585 image gfdl-esm4
 # (iam and gcm are required for future scenarios.)
 #
 # Production (all crops x all scenarios, PIK cluster):

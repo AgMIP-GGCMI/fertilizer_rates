@@ -12,7 +12,7 @@
 # Scope: instruments the support library files that are sourced as part
 # of the production runtime path or used by the PNG-regression and
 # output-verification tooling.
-# Excludes CLI scripts (fertilizer_scaling.R, tools/render_diagnostics_png.R,
+# Excludes CLI scripts (fertilizer_scaling_isimip3b.R, tools/render_diagnostics_png.R,
 # tools/accept_diagnostics_baseline.R, tools/compare_netcdf_outputs.R) because they execute at top level
 # and can't be safely sourced into covr's evaluation env. Coverage of
 # fertilizer_scaling_functions.R itself is measured by tests/coverage.R.

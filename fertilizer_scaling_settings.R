@@ -1,20 +1,19 @@
 # ============================================================================
-# Shared Settings for fertilizer_scaling.R
+# Shared Settings for fertilizer_scaling_isimip3b.R
 # ============================================================================
-# Sourced by fertilizer_scaling.R, by the testthat setup.R files, and by
-# tools/render_diagnostics_png.R. Loads required libraries and defines the
-# top-level constants and path env-var defaults used by main() and helpers.
+# Sourced by fertilizer_scaling_isimip3b.R, by the testthat setup.R files, and by
+# tools/render_diagnostics_png.R. Sources the settings shared with ISIMIP4
+# (fertilizer_scaling_common_settings.R, which loads the libraries; paths are
+# relative to the repo root, which every caller already runs from or chdirs to)
+# and defines the top-level constants and path env-var defaults used by main()
+# and helpers.
 #
-# Kept side-effect-light: only library() loads and assignments. No I/O, no
-# function calls beyond Sys.getenv().
+# Kept side-effect-light: it sources the shared settings file and otherwise does
+# assignments only. No I/O beyond that source; the only function calls are
+# Sys.getenv() and the lapply() that builds crop_to_funcgroup.
 # ============================================================================
 
-# load libraries
-library(ncdf4)
-library(testthat)
-library(fields)
-library(abind)
-library(MASS)
+source("fertilizer_scaling_common_settings.R")
 
 # input/output paths (override via .Renviron, which is in .gitignore)
 base_path_5min <- Sys.getenv(
@@ -31,45 +30,13 @@ output_base_path <- Sys.getenv(
 )
 
 # crop definitions
-cropnames <- c("swh", "wwh", "mai", "ri1", "ri2", "soy", "mil", "sor", "pea", "sgb", "cas", "rap", "sun", "nut", "sgc")
+cropnames <- ggcmi_cropnames
 
 # mapping from GGCMI crops to input file base names
-crop_to_inputfile <- list(
-  swh = "wheat",
-  wwh = "wheat",
-  mai = "maize",
-  ri1 = "rice",
-  ri2 = "rice",
-  soy = "soybean",
-  mil = "millet",
-  sor = "sorghum",
-  pea = "pea",
-  sgb = "sugarbeet",
-  cas = "cassava",
-  rap = "rapeseed",
-  sun = "sunflower",
-  nut = "groundnut",
-  sgc = "sugarcane"
-)
+crop_to_inputfile <- ggcmi_crop_to_inputcrop
 
 # mapping from crops to functional groups in time series data
-crop_to_funcgroup <- list(
-  swh = "fertl_c3ann",
-  wwh = "fertl_c3ann",
-  mai = "fertl_c4ann",
-  ri1 = "fertl_c3ann",
-  ri2 = "fertl_c3ann",
-  soy = "fertl_c3nfx",
-  mil = "fertl_c4ann",
-  sor = "fertl_c4ann",
-  pea = "fertl_c3nfx",
-  sgb = "fertl_c3ann",
-  cas = "fertl_c3per",
-  rap = "fertl_c3ann",
-  sun = "fertl_c3ann",
-  nut = "fertl_c3nfx",
-  sgc = "fertl_c4per"
-)
+crop_to_funcgroup <- lapply(ggcmi_crop_to_cft, function(cft) paste0("fertl_", cft))
 
 # scenario definitions
 scenarios <- c("histsoc")

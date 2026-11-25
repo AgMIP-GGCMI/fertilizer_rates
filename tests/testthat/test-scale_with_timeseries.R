@@ -461,11 +461,11 @@ test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data 
   local_mocked_globals(
     diagnose_extreme_values = function(scaled_data, base_rate,
                                        base_timeseries, timeseries,
-                                       start_year) {
+                                       start_year, base_year) {
       captured <<- list(
         scaled_data = scaled_data, base_rate = base_rate,
         base_timeseries = base_timeseries, timeseries = timeseries,
-        start_year = start_year
+        start_year = start_year, base_year = base_year
       )
       invisible(NULL)
     }
@@ -480,7 +480,81 @@ test_that("scale_with_timeseries calls diagnose_extreme_values with scaled_data 
   expect_equal(captured$base_timeseries, fx$timeseries[, , 2])
   expect_equal(captured$timeseries, fx$timeseries)
   expect_equal(captured$start_year, fx$start_year)
+  expect_equal(captured$base_year, fx$base_year)
   # The diagnostic is called AFTER scaling is complete, so captured$scaled_data
   # should be the final result.
   expect_equal(captured$scaled_data, result)
+})
+
+test_that("relative and lambda scaling keep [lon, lat, t] dims on grids with a length-1 dimension", {
+  for (dims in list(c(2, 1), c(1, 1))) {
+    nlon <- dims[1]; nlat <- dims[2]
+    base_rate <- array(100, dim = dims)
+    # TS(base) = 2 >= 1, so lambda takes its ordinary (non-delayed-anchor) path
+    ts <- array(rep(c(2, 3, 4), each = nlon * nlat), dim = c(dims, 3))
+    for (method in c("relative", "lambda")) {
+      out <- scale_with_timeseries(base_rate, ts, base_year = 2020,
+                                   start_year = 2020, end_year = 2022,
+                                   method = method)
+      expect_equal(dim(out), c(dims, 3))
+      expect_equal(as.vector(out[, , 1]), rep(100, nlon * nlat))
+      if (method == "relative") {
+        expect_equal(as.vector(out[, , 3]), rep(200, nlon * nlat))
+      } else {
+        # Formula from the scale_lambda_timestep header, with
+        # lambda = sqrt(ts_base / base) since 0 < ts_base < base
+        lambda <- sqrt(2 / 100)
+        expected <- 100 * (1 + (c(3, 4) - 2) / 100 * (100 / 2)^lambda)
+        expect_equal(as.vector(out[, , 2]), rep(expected[1], nlon * nlat))
+        expect_equal(as.vector(out[, , 3]), rep(expected[2], nlon * nlat))
+        # Same per-cell inputs on a 3x3 grid, which never drops dims
+        ref <- scale_with_timeseries(array(100, c(3, 3)),
+                                     array(rep(c(2, 3, 4), each = 9), c(3, 3, 3)),
+                                     base_year = 2020, start_year = 2020,
+                                     end_year = 2022, method = "lambda")
+        expect_equal(as.vector(out[, , 3]), rep(ref[1, 1, 3], nlon * nlat))
+        expect_equal(expected[2], ref[1, 1, 3])
+      }
+    }
+  }
+})
+
+test_that("lambda delayed anchor searches anchor_timeseries when given", {
+  base_rate <- matrix(100, 1, 1)
+  future <- array(c(1.25, 1.5, 2), dim = c(1, 1, 3))
+  hist <- array(c(0.5, 0.8, 1.2), dim = c(1, 1, 3))
+  out <- scale_with_timeseries(base_rate, future, base_year = 2020,
+                               start_year = 2022, end_year = 2024,
+                               method = "lambda",
+                               base_timeseries = matrix(0.8, 1, 1),
+                               anchor_timeseries = hist)
+  # y* is hist's first value >= 1 (1.2), not future's (1.25)
+  expect_equal(as.vector(out), 100 * c(1.25, 1.5, 2) / 1.2)
+})
+
+test_that("lambda delayed anchor defaults to searching timeseries", {
+  base_rate <- matrix(100, 1, 1)
+  future <- array(c(1.25, 1.5, 2), dim = c(1, 1, 3))
+  out <- scale_with_timeseries(base_rate, future, base_year = 2020,
+                               start_year = 2022, end_year = 2024,
+                               method = "lambda",
+                               base_timeseries = matrix(0.8, 1, 1))
+  expect_equal(as.vector(out), 100 * c(1.25, 1.5, 2) / 1.25)
+})
+
+test_that("anchor_timeseries on a different grid is an error", {
+  expect_error(
+    scale_with_timeseries(matrix(100, 1, 1), array(2, c(1, 1, 3)),
+                          base_year = 2020, start_year = 2022,
+                          end_year = 2024, method = "lambda",
+                          base_timeseries = matrix(0.8, 1, 1),
+                          anchor_timeseries = array(2, c(2, 1, 3))),
+    "anchor_timeseries must be on the same grid")
+  expect_error(
+    scale_with_timeseries(matrix(100, 1, 1), array(2, c(1, 1, 3)),
+                          base_year = 2020, start_year = 2022,
+                          end_year = 2024, method = "lambda",
+                          base_timeseries = matrix(0.8, 1, 1),
+                          anchor_timeseries = matrix(2, 1, 1)),
+    "anchor_timeseries must be on the same grid")
 })
