@@ -336,6 +336,9 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 #   base_timeseries: Optional [lon, lat] base-year slice used instead of
 #           timeseries[, , base_year] (main() passes the historical slice
 #           for future scenarios, whose series starts in 2015)
+#   anchor_timeseries: Optional [lon, lat, t] series searched for the lambda
+#           delayed-anchor year y* instead of timeseries (ISIMIP4 passes the
+#           histsoc series so every run uses the same y*)
 #
 # Returns:
 #   Scaled data [lon, lat, time]
@@ -346,7 +349,7 @@ diagnose_extreme_values <- function(scaled_data, base_rate, base_timeseries,
 # ============================================================================
 scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
                                    start_year, end_year, method = "relative",
-                                   base_timeseries = NULL) {
+                                   base_timeseries = NULL, anchor_timeseries = NULL) {
   print(paste("Using scaling method:", method))
   lambda_max_rate <- 500
   delayed_anchor_threshold <- 1
@@ -382,22 +385,28 @@ scale_with_timeseries <- function(base_rate, timeseries, base_year = 2000,
     valid_base_lambda <- is.finite(base_rate) & base_rate >= 0
 
     # For positive-base cells where TS(base_year) is close to zero, use a
-    # delayed anchor year y* (first t in the loaded series with TS(t) >= threshold)
+    # delayed anchor year y* (first t in the anchor series with TS(t) >= threshold; the anchor series is anchor_timeseries when given, otherwise the loaded series)
     # and scale by TS(t)/TS(y*). This avoids undefined lambda behavior at
     # TS(base_year) ~= 0 while preserving the base-map amplitude at y*.
     delayed_anchor_cells <- is.finite(base_rate) & base_rate > 0 &
       is.finite(base_timeseries) & base_timeseries < delayed_anchor_threshold
     delayed_anchor_value <- array(NA_real_, dim = c(nlon, nlat))
+    anchor_series <- if (is.null(anchor_timeseries)) timeseries else anchor_timeseries
+    if (length(dim(anchor_series)) != 3 ||
+        !identical(dim(anchor_series)[1:2], c(nlon, nlat))) {
+      stop("anchor_timeseries must be on the same grid as timeseries")
+    }
 
     if (any(delayed_anchor_cells)) {
-      # Always search the full available series for the first anchor year with
+      # Always search the full anchor series (anchor_timeseries when given,
+      # otherwise the loaded series) for the first anchor year with
       # TS >= threshold. For future scenarios base_idx is already NA so this
       # makes no difference there; for histsoc it is essential because the
       # base year (2000) may itself be zero while earlier years are positive.
       for (i in 1:nlon) {
         for (j in 1:nlat) {
           if (delayed_anchor_cells[i, j]) {
-            ts_cell <- timeseries[i, j, 1:ntimes]
+            ts_cell <- anchor_series[i, j, ]
             cand <- which(is.finite(ts_cell) & ts_cell >= delayed_anchor_threshold)
             if (length(cand) > 0) {
               delayed_anchor_value[i, j] <- ts_cell[cand[1]]

@@ -517,3 +517,43 @@ test_that("relative and lambda scaling keep [lon, lat, t] dims on grids with a l
     }
   }
 })
+
+test_that("lambda delayed anchor searches anchor_timeseries when given", {
+  base_rate <- matrix(100, 1, 1)
+  future <- array(c(1.25, 1.5, 2), dim = c(1, 1, 3))
+  hist <- array(c(0.5, 0.8, 1.2), dim = c(1, 1, 3))
+  out <- scale_with_timeseries(base_rate, future, base_year = 2020,
+                               start_year = 2022, end_year = 2024,
+                               method = "lambda",
+                               base_timeseries = matrix(0.8, 1, 1),
+                               anchor_timeseries = hist)
+  # y* is hist's first value >= 1 (1.2), not future's (1.25)
+  expect_equal(as.vector(out), 100 * c(1.25, 1.5, 2) / 1.2)
+})
+
+test_that("lambda delayed anchor defaults to searching timeseries", {
+  base_rate <- matrix(100, 1, 1)
+  future <- array(c(1.25, 1.5, 2), dim = c(1, 1, 3))
+  out <- scale_with_timeseries(base_rate, future, base_year = 2020,
+                               start_year = 2022, end_year = 2024,
+                               method = "lambda",
+                               base_timeseries = matrix(0.8, 1, 1))
+  expect_equal(as.vector(out), 100 * c(1.25, 1.5, 2) / 1.25)
+})
+
+test_that("anchor_timeseries on a different grid is an error", {
+  expect_error(
+    scale_with_timeseries(matrix(100, 1, 1), array(2, c(1, 1, 3)),
+                          base_year = 2020, start_year = 2022,
+                          end_year = 2024, method = "lambda",
+                          base_timeseries = matrix(0.8, 1, 1),
+                          anchor_timeseries = array(2, c(2, 1, 3))),
+    "anchor_timeseries must be on the same grid")
+  expect_error(
+    scale_with_timeseries(matrix(100, 1, 1), array(2, c(1, 1, 3)),
+                          base_year = 2020, start_year = 2022,
+                          end_year = 2024, method = "lambda",
+                          base_timeseries = matrix(0.8, 1, 1),
+                          anchor_timeseries = matrix(2, 1, 1)),
+    "anchor_timeseries must be on the same grid")
+})
