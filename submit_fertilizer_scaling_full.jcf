@@ -17,19 +17,7 @@ set -eo pipefail
 # Ensure expected runtime directories exist.
 mkdir -p /p/projects/macmit/data/GGCMI/AgMIP.input/phase3/n-fertilizer/group_iii/logs
 
-# PIK R/module environment.
-source /p/system/modulefiles/defaults/piam/module_load_piam
-
-# Enable nounset after cluster/module init scripts, which may read unset vars.
-set -u
-
 SCRIPT_DIR="/p/projects/macmit/users/cmueller/repos/AgMIP-GGCMI/fertilizer_rates"
-if [[ ! -f "$SCRIPT_DIR/fertilizer_scaling_isimip3b.R" ]]; then
-  echo "ERROR: fertilizer_scaling_isimip3b.R not found in working directory: $SCRIPT_DIR"
-  exit 4
-fi
-
-cd "$SCRIPT_DIR"
 
 # Full matrix (15 crops) x (1 histsoc + 3 SSP x 2 IAM x 5 GCM) = 465 jobs.
 crops=(swh wwh mai ri1 ri2 soy mil sor pea sgb cas rap sun nut sgc)
@@ -49,37 +37,13 @@ for crop in "${crops[@]}"; do
   done
 done
 
-TOTAL_TASKS=${#TASKS[@]}
-if [[ "$TOTAL_TASKS" -ne 465 ]]; then
-  echo "ERROR: expected 465 tasks, found $TOTAL_TASKS"
-  exit 1
+ENTRY_SCRIPT=fertilizer_scaling_isimip3b.R
+EXPECTED_TASKS=465
+
+# The shared job body (module load, task checks, R call) is in slurm_run_task.sh.
+if [[ ! -f "$SCRIPT_DIR/slurm_run_task.sh" ]]; then
+  echo "ERROR: slurm_run_task.sh not found in working directory: $SCRIPT_DIR"
+  exit 4
 fi
 
-if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
-  echo "ERROR: This script is intended for sbatch array execution."
-  exit 2
-fi
-
-if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID >= TOTAL_TASKS )); then
-  echo "ERROR: SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID out of range 0..$((TOTAL_TASKS - 1))"
-  exit 3
-fi
-
-TASK="${TASKS[$SLURM_ARRAY_TASK_ID]}"
-
-echo "[$(date -Iseconds)] Job ${SLURM_JOB_ID:-NA}, array task $SLURM_ARRAY_TASK_ID/$((TOTAL_TASKS - 1))"
-echo "[$(date -Iseconds)] CWD: $(pwd)"
-echo "[$(date -Iseconds)] Script dir: $SCRIPT_DIR"
-echo "[$(date -Iseconds)] Submit dir: ${SLURM_SUBMIT_DIR:-NA}"
-echo "[$(date -Iseconds)] Running: Rscript --vanilla fertilizer_scaling_isimip3b.R $TASK"
-
-# Use module/system library stack on batch nodes; do not auto-activate project renv.
-export RENV_CONFIG_AUTOLOADER_ENABLED=FALSE
-
-# TASK is intentionally split into positional CLI args.
-# shellcheck disable=SC2086
-Rscript --vanilla fertilizer_scaling_isimip3b.R $TASK
-
-RC=$?
-echo "[$(date -Iseconds)] Finished with exit code $RC"
-exit $RC
+source "$SCRIPT_DIR/slurm_run_task.sh"

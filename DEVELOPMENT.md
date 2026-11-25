@@ -80,7 +80,7 @@ How `.Renviron` is picked up:
 
 - R reads it only when started with the repo root as the working directory. The relative paths above resolve against that directory too. (`fertilizer_scaling_isimip3b.R` has to be run from the repo root anyway, because it `source()`s its siblings by relative path.)
 - Its values take precedence over same-named variables exported in your shell: `FERT_OUTPUT_BASE_PATH=/tmp/x Rscript …` has no effect while `.Renviron` sets that variable.
-- `Rscript --vanilla` skips it. The SLURM job script `submit_fertilizer_scaling_full.jcf` runs that way (from a hard-coded checkout directory), so cluster jobs ignore `.Renviron` and use the default paths — unless a `FERT_*` variable is exported in the shell you run `sbatch` from, which SLURM passes through by default.
+- `Rscript --vanilla` skips it. The SLURM job script `submit_fertilizer_scaling_full.jcf` runs that way (from a hard-coded checkout directory, through `slurm_run_task.sh`, which it sources), so cluster jobs ignore `.Renviron` and use the default paths — unless a `FERT_*` variable is exported in the shell you run `sbatch` from, which SLURM passes through by default.
 
 Expected layout under `data/`:
 
