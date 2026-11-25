@@ -149,6 +149,16 @@ To render the same diagnostics PNGs by hand, run `Rscript tools/render_diagnosti
 
 Byte-identical PNG output is expected only inside this repo's devcontainer (`rocker/r-ver:4.5.0` base image plus the apt cairo/png libraries and the R package versions pinned in `renv.lock`). Runs outside the container may produce legitimate pixel differences and will need fresh baselines captured in the devcontainer environment.
 
+### Checking NetCDF outputs bit-for-bit
+
+Run from the repo root with the inputs from [Test input data](#test-input-data) in place. Capture outputs with `rm -rf data/outputs-new && Rscript tools/render_diagnostics_png.R --both-methods data/outputs-new/histsoc mai histsoc && Rscript tools/render_diagnostics_png.R --both-methods data/outputs-new/ssp126 mai ssp126 image gfdl-esm4`; each capture writes its NetCDFs under `<dir>/nc-outputs/`.
+
+Do the reference capture once, before making changes, using `data/outputs-ref` in place of `data/outputs-new`; re-running the capture command against `data/outputs-ref` would delete the reference because of the `rm -rf`.
+
+Compare them with `Rscript tools/compare_netcdf_outputs.R data/outputs-ref data/outputs-new`, which prints one `<STATUS> <path> <ref_bytes> -> <new_bytes> bytes <detail>` line per `.nc` file (sizes are informational) and exits with status 1 if any file is not `OK` or if no `.nc` files are found in either directory.
+
+Bit-for-bit means identical dimension names, lengths, units and coordinate values; identical variable data (including the NA pattern), all variable attributes, missval and precision; and identical global attributes except `creation_date`. Compression level and file size are not compared.
+
 ## Coverage
 
 Generate a line-coverage report for `fertilizer_scaling_functions.R`:
