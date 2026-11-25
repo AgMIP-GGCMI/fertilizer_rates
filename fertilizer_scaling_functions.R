@@ -237,47 +237,25 @@ read_timeseries_nc <- function(ts_file, var_name, time_start = 1, time_count = -
 # ==========================================================================
 # FUNCTION: read_timeseries_year_slice
 # ==========================================================================
-# Read a single [lon, lat] year slice from a time-series NetCDF without
-# loading the full time axis into memory.
-# ===========================================================================
+# Read a single [lon, lat] year slice (fill values masked, lat ascending) from
+# a time-series NetCDF without loading the full time axis into memory. The
+# time step is year - file_start_year + 1; a year outside the file's time axis
+# stops with "Year <year> is outside the time series range in <file>" (followed
+# by read_timeseries_nc()'s own message). Other read errors pass through.
+# ==========================================================================
 read_timeseries_year_slice <- function(ts_file, var_name, year, file_start_year) {
-  if (!file.exists(ts_file)) {
-    stop(paste("Time series file does not exist:", ts_file))
-  }
-
-  nc <- nc_open(ts_file)
-  on.exit(nc_close(nc), add = TRUE)
-
-  if (!(var_name %in% names(nc$var))) {
-    stop(paste("Variable", var_name, "not found in time series file"))
-  }
-
   slice_idx <- year - file_start_year + 1
-  if (slice_idx < 1 || slice_idx > nc$var[[var_name]]$varsize[3]) {
-    stop(paste("Year", year, "is outside the time series range in", ts_file))
-  }
-
-  year_slice <- ncvar_get(nc, varid = var_name,
-                          start = c(1, 1, slice_idx), count = c(-1, -1, 1))
-
-  # Normalize to [lon, lat, time] so downstream indexing is shape-invariant
-  # regardless of whether ncvar_get dropped the singleton time dimension.
-  if (length(dim(year_slice)) == 2) {
-    year_slice <- array(year_slice, dim = c(nrow(year_slice), ncol(year_slice), 1))
-  }
-
-  ts_lat <- ncvar_get(nc, varid = "lat")
-  if (any(diff(ts_lat) < 0)) {
-    year_slice <- year_slice[, dim(year_slice)[2]:1, , drop = FALSE]
-  }
-
-  missval <- ncatt_get(nc, varid = var_name, attname = "_FillValue")
-  if (missval$hasatt) {
-    year_slice[year_slice == missval$value] <- NA
-  }
-  year_slice[abs(year_slice) >= 1e+19] <- NA
-
-  year_slice[, , 1, drop = FALSE][, , 1]
+  ts <- tryCatch(
+    read_timeseries_nc(ts_file, var_name, slice_idx, 1),
+    error = function(e) {
+      if (startsWith(conditionMessage(e), "Time steps ")) {
+        stop(paste0("Year ", year, " is outside the time series range in ",
+                    ts_file, " (", conditionMessage(e), ")"), call. = FALSE)
+      }
+      stop(e)
+    }
+  )
+  timeseries_slice(ts$data, 1)
 }
 
 # ============================================================================
